@@ -60,6 +60,21 @@ def summarize(path):
         print(f"<p>{len(errors) - 20} more errors in the authenticated job logs.</p>")
 
 
+def summarize_build(path):
+    if not path.exists():
+        return
+    lines = path.read_text(errors="replace").splitlines()
+    start = next((i for i, line in enumerate(lines) if '* What went wrong:' in line), None)
+    selected = lines[start:start + 35] if start is not None else lines[-45:]
+    message = safe_text('\n'.join(selected))
+    print(f'<h3>Android build failure</h3><pre>{message}</pre>')
+    escaped = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+    print(f'::error title=Android build::{escaped}', file=sys.stderr)
+
+
 if __name__ == "__main__":
-    for argument in sys.argv[1:]:
-        summarize(Path(argument))
+    if sys.argv[1:2] == ['--android-build']:
+        summarize_build(Path(sys.argv[2]))
+    else:
+        for argument in sys.argv[1:]:
+            summarize(Path(argument))

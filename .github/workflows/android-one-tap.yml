@@ -86,7 +86,12 @@ jobs:
         run: python3 .github/scripts/summarize_flutter_tests.py "$RUNNER_TEMP/one-tap-tests.jsonl" "$RUNNER_TEMP/flutter-tests.jsonl" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build pilot APK with a disposable debug signing key
-        run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true
+        id: build
+        run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true 2>&1 | tee "$RUNNER_TEMP/android-build.log"
+
+      - name: Summarize build failure
+        if: always() && steps.build.outcome == 'failure'
+        run: python3 .github/scripts/summarize_flutter_tests.py --android-build "$RUNNER_TEMP/android-build.log" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare download and checksum
         run: |
