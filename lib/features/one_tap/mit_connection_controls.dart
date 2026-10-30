@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 
+const mitIdle = Color(0xFFF5F7F5);
 const mitGreen = Color(0xFF78FF45);
 const mitBackground = Color(0xFF030805);
 
@@ -38,8 +39,8 @@ class MitConnectionControls extends StatelessWidget {
             NoAvailableProxies() => ('Нет доступного соединения', 'Отключить', const Color(0xFFFFCA70)),
             HotReloading() => ('Обновление подключения…', 'Отключить', const Color(0xFFFFCA70)),
             Disconnecting() => ('Отключение…', 'Подождите', const Color(0xFFFFCA70)),
-            Disconnected() when !hasProfile => ('Добавьте профиль для подключения', 'Добавить профиль', mitGreen),
-            Disconnected() => ('Готов к подключению', 'Подключить', mitGreen),
+            Disconnected() when !hasProfile => ('Добавьте профиль для подключения', 'Добавить профиль', mitIdle),
+            Disconnected() => ('Готов к подключению', 'Подключить', mitIdle),
             _ => ('Подготовка VPN…', 'Подождите', const Color(0xFFACB7AE)),
           };
     return Column(
@@ -65,7 +66,7 @@ class MitConnectionControls extends StatelessWidget {
                     duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: const RadialGradient(colors: [Color(0xFF16291C), Color(0xFF030805)]),
+                      gradient: RadialGradient(colors: [Color.lerp(mitBackground, color, .12)!, mitBackground]),
                       border: Border.all(color: color, width: 4),
                       boxShadow: [BoxShadow(color: color.withValues(alpha: .44), blurRadius: 19, spreadRadius: 1)],
                     ),

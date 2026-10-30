@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/mit_launcher"
         android:shortcutId="toggle"
         android:shortcutLongLabel="@string/quick_toggle"
         android:shortcutShortLabel="@string/quick_toggle">

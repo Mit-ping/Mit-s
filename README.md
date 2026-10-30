@@ -1,3 +1,14 @@
+# Mit’s VPN — Android fork
+
+This fork provides the Mit’s VPN Android interface, white/green connection states,
+launcher and startup artwork, profile management and Russian direct-routing policy.
+Source and published build history: https://github.com/Mit-ping/Mit-s .
+
+Based on [Hiddify](https://github.com/hiddify/hiddify-app). Original copyright and
+[license](LICENSE.md) are retained; the app includes them under “Лицензии и сведения об авторах”.
+
+---
+
 <div dir="ltr" align=center>
     
 [**![Lang_farsi](https://user-images.githubusercontent.com/125398461/234186932-52f1fa82-52c6-417f-8b37-08fe9250a55f.png) فارسی**](README_fa.md) / [**Русский 🇷🇺**](README_ru.md) / [**简体中文 🇨🇳**](README_cn.md) / [**日本語 🇯🇵**](README_ja.md) / [**Portugês-BR 🇧🇷**](README_br.md)

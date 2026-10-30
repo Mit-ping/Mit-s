@@ -1,3 +1,5 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
+import 'package:hiddify/features/one_tap/mit_brand_pages.dart';
 import 'package:fluentui_system_icons/fluentui_system_icons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +23,7 @@ class AboutPage extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (oneTapVpnEnabled) return const MitAboutPage();
     final t = ref.watch(translationsProvider).requireValue;
     final appInfo = ref.watch(appInfoProvider).requireValue;
     final appUpdate = ref.watch(appUpdateNotifierProvider);

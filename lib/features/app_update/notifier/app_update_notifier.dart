@@ -1,3 +1,4 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
 import 'package:hiddify/core/app_info/app_info_provider.dart';
 import 'package:hiddify/core/localization/locale_preferences.dart';
 import 'package:hiddify/core/model/constants.dart';
@@ -45,6 +46,7 @@ class AppUpdateNotifier extends _$AppUpdateNotifier with AppLogger {
   );
 
   Future<AppUpdateState> check() async {
+    if (oneTapVpnEnabled) return state = const AppUpdateState.disabled();
     loggy.debug("checking for update");
     state = const AppUpdateState.checking();
     final appInfo = ref.watch(appInfoProvider).requireValue;

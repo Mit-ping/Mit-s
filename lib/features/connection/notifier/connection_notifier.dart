@@ -1,3 +1,4 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
 import 'dart:io';
 
 import 'package:hiddify/core/haptic/haptic_service.dart';
@@ -144,7 +145,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
         state = AsyncError(err, StackTrace.current);
         await ref
             .read(dialogNotifierProvider.notifier)
-            .showCustomAlertFromErr(err.present(ref.read(translationsProvider).requireValue));
+            .showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Не удалось выполнить действие. Проверьте разрешение Android VPN.') : err.present(ref.read(translationsProvider).requireValue));
       }).run();
     }
   }
@@ -210,7 +211,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       // Prefer Disconnected(failure) over AsyncError so the button shows failed + details,
       // and a late bare Disconnected from the status stream is less likely to erase it.
       state = AsyncData(Disconnected(err));
-      await dialogs.showCustomAlertFromErr(err.present(t));
+      await dialogs.showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Проверьте сеть, профиль и разрешение Android VPN.') : err.present(t));
       loggy.warning(err);
       if (err.toString().contains("panic")) {
         await Sentry.captureException(Exception(err.toString()));
@@ -231,7 +232,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       loggy.warning("error disconnecting", err);
       ref
           .read(dialogNotifierProvider.notifier)
-          .showCustomAlertFromErr(err.present(ref.read(translationsProvider).requireValue));
+          .showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Не удалось выполнить действие. Проверьте разрешение Android VPN.') : err.present(ref.read(translationsProvider).requireValue));
       state = AsyncError(err, StackTrace.current);
     }).run();
   }

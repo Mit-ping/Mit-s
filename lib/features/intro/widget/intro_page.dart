@@ -1,3 +1,5 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
+import 'package:hiddify/features/one_tap/mit_brand_pages.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -36,6 +38,7 @@ class IntroPage extends HookConsumerWidget with PresLogger {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (oneTapVpnEnabled) return const MitIntroPage();
     final t = ref.watch(translationsProvider).requireValue;
     final theme = Theme.of(context);
 

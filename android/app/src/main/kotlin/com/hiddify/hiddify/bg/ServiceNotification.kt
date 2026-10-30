@@ -78,7 +78,7 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
             .setShowWhen(false)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setSmallIcon(R.drawable.ic_stat_logo)
+            .setSmallIcon(R.drawable.mit_stat_icon)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(
                 PendingIntent.getActivity(
@@ -105,14 +105,14 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     fun show(profileName: String, @StringRes contentTextId: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(
-                NotificationChannel(notificationChannel, "hiddify service", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(notificationChannel, "Mit’s VPN", NotificationManager.IMPORTANCE_LOW)
             )
         }
         render(profileName, service.getString(contentTextId), modeLabel, foreground = true)
     }
 
     private fun render(profile: String, text: String, header: String, foreground: Boolean = false) {
-        val next = Triple(profile.ifBlank { "Hiddify" }, text, header)
+        val next = Triple(profile.ifBlank { "Mit’s VPN" }, text, header)
         if (!foreground && next == shown) return
         shown = next
         val built = notificationBuilder

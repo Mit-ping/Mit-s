@@ -6,6 +6,7 @@ import 'package:hiddify/features/connection/model/connection_failure.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/one_tap/one_tap_home_page.dart';
+import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
@@ -76,6 +77,7 @@ void main() {
   testWidgets('neon power button starts real notifier action', (tester) async {
     var calls = 0;
     await open(tester, selected: profile, onToggle: () => calls++);
+    expect(tester.widget<Icon>(find.byIcon(Icons.power_settings_new_rounded)).color, mitIdle);
     await tester.tap(find.byKey(const ValueKey('mit-power-button')));
     await tester.pumpAndSettle();
     expect(calls, 1);
@@ -90,6 +92,8 @@ void main() {
     testWidgets('can stop ${state.runtimeType} without any active profile', (tester) async {
       var calls = 0;
       await open(tester, status: state, onToggle: () => calls++);
+      final color = tester.widget<Icon>(find.byIcon(Icons.power_settings_new_rounded)).color;
+      expect(color, state is Connected ? mitGreen : isNot(mitGreen));
       await tester.tap(find.byKey(const ValueKey('mit-power-button')));
       await tester.pumpAndSettle();
       expect(calls, 1);

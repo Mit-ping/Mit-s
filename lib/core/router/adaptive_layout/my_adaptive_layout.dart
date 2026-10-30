@@ -26,8 +26,7 @@ class MyAdaptiveLayout extends HookConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = ref.watch(translationsProvider).requireValue;
-    final pilotHome = oneTapVpnEnabled &&
-        navigationShell.currentIndex == getIndexOfBranch(isMobileBreakpoint, showProfilesAction, 'home');
+    final pilotHome = oneTapVpnEnabled;
     // focus switch management
     final primaryFocusHash = useState<int?>(null);
     final navScopeNode = useFocusScopeNode();

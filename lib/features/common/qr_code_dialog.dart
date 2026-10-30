@@ -1,3 +1,5 @@
+import 'package:hiddify/features/one_tap/mit_brand.dart';
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -170,7 +172,7 @@ class _QrCode extends StatelessWidget {
               borderRadius: BorderRadius.circular(13),
               border: Border.all(color: Colors.white, width: 3),
             ),
-            child: Assets.images.logo.svg(colorFilter: ColorFilter.mode(colors.onPrimary, BlendMode.srcIn)),
+            child: oneTapVpnEnabled ? const MitLogo(size: 42) : Assets.images.logo.svg(colorFilter: ColorFilter.mode(colors.onPrimary, BlendMode.srcIn)),
           ),
         ],
       ),

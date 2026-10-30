@@ -1,3 +1,5 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
+import 'package:hiddify/features/one_tap/mit_brand_pages.dart';
 import 'package:flutter/material.dart';
 import 'package:gap/gap.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +17,7 @@ class ProfilesModal extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    if (oneTapVpnEnabled) return const MitProfilesSheet();
     final t = ref.watch(translationsProvider).requireValue;
     final asyncProfiles = ref.watch(profilesNotifierProvider);
 
