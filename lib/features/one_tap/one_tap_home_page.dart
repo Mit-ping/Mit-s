@@ -77,7 +77,7 @@ class OneTapHomePage extends HookConsumerWidget {
     }
 
     void openProfiles() {
-      if (!canImport) return;
+      if (busy.value || ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
       if (active.valueOrNull == null) {
         importProfile();
       } else {

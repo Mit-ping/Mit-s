@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
@@ -24,6 +25,16 @@ class _Core extends ConnectionNotifier {
   Stream<ConnectionStatus> build() => Stream.value(current);
   @override
   Future<void> toggleConnection() async => onToggle();
+  void emit(ConnectionStatus next) => state = AsyncData(next);
+}
+
+class _Sheets extends BottomSheetsNotifier {
+  _Sheets(this.onOpen);
+  final VoidCallback onOpen;
+  @override
+  void build() {}
+  @override
+  Future<void> showProfilesOverview() async => onOpen();
 }
 
 class _Dialogs extends DialogNotifier {
@@ -97,6 +108,27 @@ void main() {
     expect(button.onTap, isNull);
     expect(tester.widget<OutlinedButton>(find.byKey(const ValueKey('add-reality-profile'))).onPressed, isNull);
     expect(calls, 0);
+  });
+
+  testWidgets('an already-open menu rechecks native status before profile selection', (tester) async {
+    var opened = 0;
+    final core = _Core(const Disconnected(), () {});
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activeProfileProvider.overrideWith(() => _Active(profile)),
+        connectionNotifierProvider.overrideWith(() => core),
+        bottomSheetsNotifierProvider.overrideWith(() => _Sheets(() => opened++)),
+      ],
+      child: const MaterialApp(home: OneTapHomePage()),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Меню'));
+    await tester.pumpAndSettle();
+    core.emit(const Connected());
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Выбрать профиль'));
+    await tester.pumpAndSettle();
+    expect(opened, 0);
   });
 
   testWidgets('error screen hides native error contents', (tester) async {
