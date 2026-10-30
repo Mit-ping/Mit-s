@@ -58,8 +58,15 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
-      - name: Test
-        run: flutter test
+      - name: Test pilot
+        run: flutter test test/features/one_tap --machine > "$RUNNER_TEMP/one-tap-tests.jsonl"
+
+      - name: Test full suite
+        run: flutter test --machine > "$RUNNER_TEMP/flutter-tests.jsonl"
+
+      - name: Summarize test results
+        if: always()
+        run: python3 .github/scripts/summarize_flutter_tests.py "$RUNNER_TEMP/one-tap-tests.jsonl" "$RUNNER_TEMP/flutter-tests.jsonl" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build pilot APK with a disposable debug signing key
         run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true
