@@ -59,6 +59,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Color ringColor(WidgetTester tester) {
+    final ring = tester.widget<AnimatedContainer>(find.descendant(
+      of: find.byType(MitConnectionControls), matching: find.byType(AnimatedContainer),
+    ));
+    return ((ring.decoration! as BoxDecoration).border! as Border).top.color;
+  }
+
   testWidgets('empty state imports explicitly and rejects subscription URLs before repository access', (tester) async {
     await open(tester);
     expect(find.text('Добавьте профиль для подключения'), findsOneWidget);
@@ -78,6 +85,7 @@ void main() {
     var calls = 0;
     await open(tester, selected: profile, onToggle: () => calls++);
     expect(tester.widget<Icon>(find.byIcon(Icons.power_settings_new_rounded)).color, mitIdle);
+    expect(ringColor(tester), mitIdle);
     await tester.tap(find.byKey(const ValueKey('mit-power-button')));
     await tester.pumpAndSettle();
     expect(calls, 1);
@@ -94,6 +102,7 @@ void main() {
       await open(tester, status: state, onToggle: () => calls++);
       final color = tester.widget<Icon>(find.byIcon(Icons.power_settings_new_rounded)).color;
       expect(color, state is Connected ? mitGreen : isNot(mitGreen));
+      expect(ringColor(tester), state is Connected ? mitGreen : isNot(mitGreen));
       await tester.tap(find.byKey(const ValueKey('mit-power-button')));
       await tester.pumpAndSettle();
       expect(calls, 1);

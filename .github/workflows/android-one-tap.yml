@@ -80,10 +80,10 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Test pilot
-        run: flutter test test/features/one_tap --machine > "$RUNNER_TEMP/one-tap-tests.jsonl"
+        run: timeout --signal=TERM --kill-after=10s 5m flutter test test/features/one_tap --timeout 90s --machine > "$RUNNER_TEMP/one-tap-tests.jsonl"
 
       - name: Test full suite
-        run: flutter test --machine > "$RUNNER_TEMP/flutter-tests.jsonl"
+        run: flutter test --timeout 90s --machine > "$RUNNER_TEMP/flutter-tests.jsonl"
 
       - name: Summarize test results
         if: always()

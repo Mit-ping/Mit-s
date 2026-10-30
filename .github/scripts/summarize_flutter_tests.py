@@ -28,6 +28,7 @@ def summarize(path):
     names = {}
     results = collections.Counter()
     errors = []
+    finished = set()
     completed = False
     for line in path.read_text(errors="replace").splitlines():
         try:
@@ -40,12 +41,18 @@ def summarize(path):
         if kind == "testStart":
             test = event["test"]
             names[test["id"]] = test["name"]
-        elif kind == "testDone" and not event.get("hidden"):
-            results["skipped" if event.get("skipped") else event["result"]] += 1
+        elif kind == "testDone":
+            finished.add(event["testID"])
+            if not event.get("hidden"):
+                results["skipped" if event.get("skipped") else event["result"]] += 1
         elif kind == "error":
             errors.append((event.get("testID"), event.get("error", "Unknown test error")))
         elif kind == "done":
             completed = True
+    if not completed:
+        for test_id, name in names.items():
+            if test_id not in finished:
+                errors.append((test_id, "Runner stopped before this test completed."))
     print(f"<p>Reporter completed: {completed}. Outcomes: {html.escape(str(dict(results)))}</p>")
     for test_id, error in errors[:20]:
         name = names.get(test_id, 'Test loading/runner')

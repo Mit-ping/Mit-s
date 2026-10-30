@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hiddify/core/preferences/general_preferences.dart';
@@ -93,7 +92,7 @@ class MitLegalPage extends StatelessWidget {
   const MitLegalPage({super.key});
   @override
   Widget build(BuildContext context) => MitPage(title: 'Лицензии и исходный код', child: FutureBuilder<String>(
-    future: rootBundle.loadString('assets/legal/NOTICE.txt'),
+    future: DefaultAssetBundle.of(context).loadString('assets/legal/NOTICE.txt'),
     builder: (context, snapshot) {
       if (snapshot.hasError) return const Center(child: Text('Не удалось открыть сведения о лицензиях.'));
       if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());

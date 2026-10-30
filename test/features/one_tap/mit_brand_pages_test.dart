@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hiddify/core/analytics/analytics_controller.dart';
@@ -12,6 +13,14 @@ import 'package:hiddify/features/one_tap/mit_brand_pages.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+class _LegalBundle extends CachingAssetBundle {
+  @override
+  Future<ByteData> load(String key) async {
+    if (key == 'assets/legal/NOTICE.txt') return ByteData.sublistView(File(key).readAsBytesSync());
+    return rootBundle.load(key);
+  }
+}
 
 class _Analytics extends AnalyticsController {
   @override
@@ -66,8 +75,7 @@ void main() {
   }
 
   testWidgets('required upstream license is retained in the dedicated legal page', (tester) async {
-    await tester.runAsync(() => rootBundle.loadString('assets/legal/NOTICE.txt'));
-    await tester.pumpWidget(const MaterialApp(home: MitLegalPage()));
+    await tester.pumpWidget(DefaultAssetBundle(bundle: _LegalBundle(), child: const MaterialApp(home: MitLegalPage())));
     await tester.pumpAndSettle();
     expect(find.byType(SelectableText), findsOneWidget);
     expect(tester.widget<SelectableText>(find.byType(SelectableText)).data, contains('https://github.com/hiddify/hiddify-app'));
@@ -110,6 +118,6 @@ void main() {
     await tester.tap(find.text('Удалить'));
     await tester.pumpAndSettle();
     expect(profiles.deletions, 0);
-    expect(tester.widget<IconButton>(find.byTooltip('Удалить профиль')).onPressed, isNull);
+    expect(tester.widget<IconButton>(find.widgetWithIcon(IconButton, Icons.delete_outline)).onPressed, isNull);
   });
 }
