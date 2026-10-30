@@ -20,10 +20,27 @@ concurrency:
 
 jobs:
   test-and-apk:
-    runs-on: ubuntu-22.04
+    # SQLite 3.37 on 22.04 rejects ADD COLUMN CHECK with DQS disabled,
+    # as used by Drift's SchemaVerifier. Keep strict migration checks enabled.
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
+
+      - name: Check strict SQLite migration runtime
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          print('SQLite:', sqlite3.sqlite_version)
+          db = sqlite3.connect(':memory:')
+          db.setconfig(sqlite3.SQLITE_DBCONFIG_DQS_DDL, False)
+          db.setconfig(sqlite3.SQLITE_DBCONFIG_DQS_DML, False)
+          db.execute('CREATE TABLE profile_entries (id TEXT PRIMARY KEY)')
+          db.execute("INSERT INTO profile_entries VALUES ('synthetic-profile')")
+          db.execute('ALTER TABLE "profile_entries" ADD COLUMN "pinned" INTEGER NOT NULL DEFAULT (0) CHECK ("pinned" IN (0, 1))')
+          assert db.execute('SELECT pinned FROM profile_entries').fetchone() == (0,)
+          db.close()
+          PY
 
       - uses: actions/setup-java@v5
         with:
