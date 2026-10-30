@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
+import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
+import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
-import 'package:hiddify/features/home/widget/connection_button.dart';
+import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
 import 'package:hiddify/features/one_tap/reality_profile.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
@@ -16,56 +21,177 @@ class OneTapHomePage extends HookConsumerWidget {
     final active = ref.watch(activeProfileProvider);
     final status = ref.watch(connectionNotifierProvider);
     final busy = useState(false);
-    final canImport = !busy.value && status.hasValue && (status.valueOrNull?.isDisconnected ?? false);
-    return Scaffold(
-      appBar: AppBar(title: const Text('VPN')),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              children: [
-                if (busy.value)
-                  const CircularProgressIndicator()
-                else if (active.hasValue && active.valueOrNull != null)
-                  const ConnectionButton()
-                else
-                  const Text('Добавьте профиль для подключения'),
-                const SizedBox(height: 24),
-                const Text('Российские сайты — напрямую\nОстальной трафик — через VPN', textAlign: TextAlign.center),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  icon: const Icon(Icons.add),
-                  label: Text(busy.value ? 'Проверка профиля…' : 'Добавить VLESS + REALITY'),
-                  onPressed: !canImport ? null : () async {
-                    final input = await showDialog<String>(
-                      context: context,
-                      builder: (_) => const _ProfileDialog(),
-                    );
-                    if (input == null || !context.mounted) return;
-                    if (!(ref.read(connectionNotifierProvider).valueOrNull?.isDisconnected ?? false)) return;
-                    busy.value = true;
-                    try {
-                      final link = validateRealityProfile(input);
-                      final repo = await ref.read(profileRepositoryProvider.future);
-                      final result = await repo.addLocal(link, userOverride: const UserOverride(name: 'VPN')).run();
-                      if (result.isLeft()) throw const FormatException('Не удалось проверить профиль.');
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Профиль добавлен')));
-                      }
-                    } catch (_) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Не удалось добавить профиль VLESS + REALITY. Проверьте ссылку.')),
-                        );
-                      }
-                    } finally {
-                      if (context.mounted) busy.value = false;
-                    }
-                  },
-                ),
-              ],
-            ),
+    final current = status.valueOrNull;
+    final canImport = !busy.value && current is Disconnected;
+    final canStop = switch (current) {
+      Connected() || Connecting() || Waiting() || NoAvailableProxies() || HotReloading() => true,
+      _ => false,
+    };
+    final canToggle = !busy.value && (canStop ||
+        (active.hasValue && (current is Disconnected || (status.hasError && active.valueOrNull != null))));
+
+    Future<void> importProfile() async {
+      if (busy.value || ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
+      final input = await showDialog<String>(context: context, builder: (_) => const _ProfileDialog());
+      if (input == null || !context.mounted) return;
+      if (ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
+      busy.value = true;
+      try {
+        final link = validateRealityProfile(input);
+        final repo = await ref.read(profileRepositoryProvider.future);
+        final result = await repo.addLocal(link, userOverride: const UserOverride(name: 'VPN')).run();
+        if (result.isLeft()) throw const FormatException('Не удалось проверить профиль.');
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Профиль добавлен')));
+        }
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Не удалось добавить профиль VLESS + REALITY. Проверьте ссылку.')),
+          );
+        }
+      } finally {
+        if (context.mounted) busy.value = false;
+      }
+    }
+
+    Future<void> powerPressed() async {
+      final latest = ref.read(connectionNotifierProvider);
+      if (busy.value || latest.valueOrNull is Disconnecting) return;
+      final stopping = switch (latest.valueOrNull) {
+        Connected() || Connecting() || Waiting() || NoAvailableProxies() || HotReloading() => true,
+        _ => false,
+      };
+      if (!stopping) {
+        if (ref.read(activeProfileProvider).valueOrNull == null) {
+          await importProfile();
+          return;
+        }
+        if (!await ref.read(dialogNotifierProvider.notifier).showExperimentalFeatureNotice()) return;
+        if (!context.mounted) return;
+        final afterNotice = ref.read(connectionNotifierProvider);
+        // Consent must never turn into an unintended disconnect if native status changed.
+        if (!(afterNotice.hasError || afterNotice.valueOrNull is Disconnected)) return;
+      }
+      await ref.read(connectionNotifierProvider.notifier).toggleConnection();
+    }
+
+    void openProfiles() {
+      if (!canImport) return;
+      if (active.valueOrNull == null) {
+        importProfile();
+      } else {
+        ref.read(bottomSheetsNotifierProvider.notifier).showProfilesOverview();
+      }
+    }
+
+    Future<void> openMenu() async {
+      final choice = await showModalBottomSheet<int>(
+        context: context,
+        showDragHandle: true,
+        builder: (context) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            ListTile(leading: const Icon(Icons.add_rounded), title: const Text('Добавить профиль'), enabled: canImport,
+                onTap: canImport ? () => Navigator.pop(context, 0) : null),
+            ListTile(leading: const Icon(Icons.folder_outlined), title: const Text('Выбрать профиль'), enabled: canImport,
+                onTap: canImport ? () => Navigator.pop(context, 1) : null),
+            ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Настройки'),
+                onTap: () => Navigator.pop(context, 2)),
+          ]),
+        ),
+      );
+      if (!context.mounted) return;
+      switch (choice) {
+        case 0: await importProfile();
+        case 1: openProfiles();
+        case 2: context.goNamed('settings');
+        default: break;
+      }
+    }
+
+    return Theme(
+      data: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: mitBackground,
+        colorScheme: ColorScheme.fromSeed(seedColor: mitGreen, brightness: Brightness.dark, surface: mitBackground),
+      ),
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          systemNavigationBarColor: mitBackground,
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
+        child: Scaffold(
+          backgroundColor: mitBackground,
+          body: Stack(
+            children: [
+              Positioned.fill(
+                child: ExcludeSemantics(child: Image.asset('assets/images/mit_vpn_background.png', fit: BoxFit.cover, alignment: Alignment.topCenter)),
+              ),
+              const Positioned.fill(
+                child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [Color(0x33000000), Color(0x22000000), Color(0xDD030805), mitBackground],
+                  stops: [0, .38, .74, 1],
+                ))),
+              ),
+              SafeArea(
+                child: LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  child: Column(
+                    children: [
+                      Row(children: [
+                        IconButton(onPressed: openMenu, icon: const Icon(Icons.menu_rounded, color: Colors.white), tooltip: 'Меню'),
+                        const Expanded(child: Center(child: Text.rich(
+                          TextSpan(children: [TextSpan(text: 'Mit’s ', style: TextStyle(color: Colors.white)), TextSpan(text: 'VPN', style: TextStyle(color: mitGreen))]),
+                          style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8),
+                        ))),
+                        IconButton(onPressed: () => _showRouting(context), icon: const Icon(Icons.verified_user_outlined, color: mitGreen), tooltip: 'О маршрутизации'),
+                      ]),
+                      SizedBox(height: (constraints.maxHeight * .11).clamp(30.0, 86.0)),
+                      MitConnectionControls(
+                        status: current, hasProfile: active.valueOrNull != null, hasError: status.hasError,
+                        importing: busy.value, onPressed: canToggle ? powerPressed : null,
+                      ),
+                      const SizedBox(height: 22),
+                      const Icon(Icons.shield_outlined, color: mitGreen, size: 28),
+                      const SizedBox(height: 8),
+                      const Text('Подключение под вашим контролем', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFFB1BDB4), fontSize: 12)),
+                      const SizedBox(height: 24),
+                      _MitCard(child: ListTile(
+                        key: const ValueKey('mit-profile-card'),
+                        onTap: canImport ? openProfiles : null,
+                        leading: const Icon(Icons.language_rounded, color: mitGreen, size: 32),
+                        title: const Text('Активный профиль', style: TextStyle(color: Color(0xFFADB9B0), fontSize: 12)),
+                        subtitle: Text(active.isLoading ? 'Загрузка…' : active.hasError ? 'Профиль недоступен' : active.valueOrNull == null ? 'Добавить профиль' : 'Основной профиль', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 17)),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFFADB9B0)),
+                      )),
+                      const SizedBox(height: 14),
+                      const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Expanded(child: _FeatureCard(icon: Icons.alt_route_rounded, title: 'Умный маршрут', caption: 'РФ напрямую')),
+                        SizedBox(width: 8),
+                        Expanded(child: _FeatureCard(icon: Icons.shield_outlined, title: 'Профиль VPN', caption: 'VLESS + REALITY')),
+                        SizedBox(width: 8),
+                        Expanded(child: _FeatureCard(icon: Icons.touch_app_outlined, title: 'Одна кнопка', caption: 'Ваш контроль')),
+                      ]),
+                      const SizedBox(height: 18),
+                      OutlinedButton.icon(
+                        key: const ValueKey('add-reality-profile'),
+                        style: OutlinedButton.styleFrom(foregroundColor: mitGreen, side: const BorderSide(color: Color(0xFF33572D))),
+                        onPressed: canImport ? importProfile : null,
+                        icon: const Icon(Icons.add_rounded),
+                        label: Text(busy.value ? 'Проверка профиля…' : 'Добавить профиль'),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('Маршрут при подключении:\nРоссия — напрямую · Остальной трафик — VPN', textAlign: TextAlign.center,
+                        style: TextStyle(color: Color(0xFFB1BDB4), fontSize: 11, height: 1.6)),
+                    ],
+                  ),
+                )),
+              ),
+            ],
           ),
         ),
       ),
@@ -73,32 +199,60 @@ class OneTapHomePage extends HookConsumerWidget {
   }
 }
 
+void _showRouting(BuildContext context) {
+  showDialog<void>(context: context, builder: (context) => AlertDialog(
+    title: const Text('Умная маршрутизация'),
+    content: const Text('Российские домены и IP-адреса, а также локальная сеть идут напрямую. Остальной трафик направляется через выбранный VPN-профиль. Прямые соединения не проходят через VPN.'),
+    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Понятно'))],
+  ));
+}
+
+class _MitCard extends StatelessWidget {
+  const _MitCard({required this.child});
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFF25492C)),
+      gradient: const LinearGradient(colors: [Color(0xF00D1910), Color(0xF0080E0A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+    ),
+    child: child,
+  );
+}
+
+class _FeatureCard extends StatelessWidget {
+  const _FeatureCard({required this.icon, required this.title, required this.caption});
+  final IconData icon;
+  final String title;
+  final String caption;
+  @override
+  Widget build(BuildContext context) => _MitCard(
+    child: Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 15), child: Column(children: [
+      Icon(icon, color: mitGreen, size: 29),
+      const SizedBox(height: 9),
+      Text(title, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 11, height: 1.4)),
+      const SizedBox(height: 4),
+      Text(caption, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFADB9B0), fontSize: 10, height: 1.4)),
+    ])),
+  );
+}
+
 class _ProfileDialog extends StatefulWidget {
   const _ProfileDialog();
-
   @override
   State<_ProfileDialog> createState() => _ProfileDialogState();
 }
 
 class _ProfileDialogState extends State<_ProfileDialog> {
   final controller = TextEditingController();
-
   @override
-  void dispose() {
-    controller.dispose();
-    super.dispose();
-  }
-
+  void dispose() { controller.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: const Text('Профиль VPN'),
-    content: TextField(
-      controller: controller,
-      obscureText: true,
-      autocorrect: false,
-      enableSuggestions: false,
-      decoration: const InputDecoration(labelText: 'Ссылка vless://'),
-    ),
+    content: TextField(controller: controller, obscureText: true, autocorrect: false, enableSuggestions: false,
+      enableIMEPersonalizedLearning: false, decoration: const InputDecoration(labelText: 'Ссылка vless://')),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
       TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Добавить')),
