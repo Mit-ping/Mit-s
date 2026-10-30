@@ -65,8 +65,10 @@ void main() {
         translationsProvider.overrideWith((ref) => AppLocale.ru.build()),
       ]);
       addTearDown(container.dispose);
-      await container.read(translationsProvider.future);
-      await container.read(analyticsControllerProvider.future);
+      await tester.runAsync(() async {
+        await container.read(translationsProvider.future);
+        await container.read(analyticsControllerProvider.future);
+      });
       await tester.pumpWidget(UncontrolledProviderScope(container: container, child: MaterialApp(home: page.value)));
       await tester.pumpAndSettle();
       expect(find.textContaining('Hiddify'), findsNothing);

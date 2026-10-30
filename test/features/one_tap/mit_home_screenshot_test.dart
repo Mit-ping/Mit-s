@@ -67,8 +67,10 @@ void main() {
         analyticsControllerProvider.overrideWith(_Analytics.new),
       ]);
       addTearDown(container.dispose);
-      await container.read(translationsProvider.future);
-      await container.read(analyticsControllerProvider.future);
+      await tester.runAsync(() async {
+        await container.read(translationsProvider.future);
+        await container.read(analyticsControllerProvider.future);
+      });
       final key = GlobalKey();
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
