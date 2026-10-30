@@ -48,8 +48,14 @@ def summarize(path):
             completed = True
     print(f"<p>Reporter completed: {completed}. Outcomes: {html.escape(str(dict(results)))}</p>")
     for test_id, error in errors[:20]:
-        print(f"<h4>{safe_text(names.get(test_id, 'Test loading/runner'))}</h4>")
+        name = names.get(test_id, 'Test loading/runner')
+        print(f"<h4>{safe_text(name)}</h4>")
         print(f"<pre>{safe_text(error)}</pre>")
+        # Public run annotations remain readable when full job logs/summaries
+        # require GitHub login. Escape workflow-command separators as well.
+        message = safe_text(f"{name}: {error}")
+        message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f"::error title=Flutter test::{message}", file=sys.stderr)
     if len(errors) > 20:
         print(f"<p>{len(errors) - 20} more errors in the authenticated job logs.</p>")
 
