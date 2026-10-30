@@ -1,0 +1,79 @@
+name: Android one-tap APK
+
+on:
+  push:
+    branches: ['feat/android-one-tap-*']
+  pull_request:
+    paths:
+      - '.github/workflows/android-one-tap.yml'
+      - 'lib/features/one_tap/**'
+      - 'test/features/one_tap/**'
+      - 'android/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-one-tap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2.21.0
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install pinned Android toolchain
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+
+      - name: Resolve locked dependencies and generate sources
+        run: |
+          flutter pub get --enforce-lockfile
+          dart run build_runner build --delete-conflicting-outputs
+          dart run slang
+
+      - name: Prepare native libraries for Linux tests and Android
+        run: make linux-amd64-libs android-libs SHELL=/bin/bash '.SHELLFLAGS=-euo pipefail -c'
+
+      - name: Check iOS configuration remains consistent
+        run: python3 .github/scripts/validate_ios_release_config.py
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test
+        run: flutter test
+
+      - name: Build pilot APK with a disposable debug signing key
+        run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true
+
+      - name: Prepare download and checksum
+        run: |
+          mkdir -p artifacts
+          cp build/app/outputs/flutter-apk/app-debug.apk artifacts/one-tap-vpn-debug.apk
+          cd artifacts
+          sha256sum one-tap-vpn-debug.apk > SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: one-tap-vpn-debug-${{ github.sha }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 14
