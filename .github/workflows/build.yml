@@ -84,7 +84,7 @@ jobs:
           # Quote multi-target lists: in YAML flow maps, commas start a new key
           # (`targets: exe,msix,zip` was parsed as targets=exe only).
           - { platform: android-apk,       os: ubuntu-latest,  targets: apk }
-          # - { platform: android-aab,       os: ubuntu-latest,  targets: aab }
+          - { platform: android-aab,       os: ubuntu-latest,  targets: aab }
           - { platform: windows,          os: windows-latest, aarch: amd64,     targets: "exe,msix,zip" }
           - { platform: linux,            os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz,AppImage" }
           # - { platform: linux-amd64,      os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz" }
@@ -92,8 +92,8 @@ jobs:
           # - { platform: linux-amd64-musl, os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz" }
           # - { platform: linux-arm64-musl, os: ubuntu-24.04-arm, aarch: arm64,   targets: "deb,gz" }
           - { platform: macos,            os: macos-15,       aarch: universal, targets: "dmg,pkg" }
-          # - { platform: macos-appstore,   os: macos-26,       aarch: universal, targets: "pkg,dmg" }
-          # - { platform: ios,              os: macos-26,       aarch: universal, filename: hiddify-ios, targets: ipa }
+          - { platform: macos-appstore,   os: macos-26,       aarch: universal, targets: "pkg,dmg" }
+          - { platform: ios,              os: macos-26,       aarch: universal, filename: hiddify-ios, targets: ipa }
     runs-on: ${{ matrix.os }}
     steps:
       - name: checkout
@@ -544,8 +544,10 @@ jobs:
           rm -rf ~/Library/Developer/Xcode/UserData/Provisioning\ Profiles || true
   update-draft:
     # Always refresh the moving `draft` tag/release to this build's commit and assets.
-    if: ${{ inputs.upload-artifact }}
-    needs: [build]
+    # On versioned tags this runs after upload-release so the two softprops jobs
+    # never create releases / upload assets with the same token concurrently.
+    if: ${{ !cancelled() && inputs.upload-artifact && needs.build.result == 'success' && (needs.upload-release.result == 'success' || needs.upload-release.result == 'skipped') }}
+    needs: [build, upload-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -655,6 +657,9 @@ jobs:
         run: echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' > service_account.json
 
       - name: Deploy to Google Play Internal Testers
+        # Play Console problems must not block the GitHub release, VirusTotal
+        # scan or TestFlight; the step is reported as a warning instead.
+        continue-on-error: true
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: service_account.json
@@ -673,9 +678,9 @@ jobs:
     with:
       release_tag: ${{ inputs.tag-name }}
 
-  # After the draft release is published: same App Store Connect API key for iOS + macOS.
+  # Needs only the build artifacts: same App Store Connect API key for iOS + macOS.
   upload-to-testflight:
-    needs: [update-draft]
+    needs: [build]
     permissions:
       actions: read
       contents: read

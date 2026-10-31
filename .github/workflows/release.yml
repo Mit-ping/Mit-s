@@ -13,11 +13,10 @@ jobs:
   build-release:
     uses: ./.github/workflows/build.yml
     secrets: inherit
-    permissions:
-      actions: read
-      contents: write
-      id-token: write
-      attestations: write
+    # Same grant as ci.yml: with the narrowed block below GITHUB_TOKEN got
+    # "Resource not accessible by integration" (403) from the create-release API
+    # on the v5.2.0 run. Jobs inside build.yml still restrict their own scopes.
+    permissions: write-all
     with:
       upload-artifact: true
       tag-name: "${{ github.ref_name }}"
