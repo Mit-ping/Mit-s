@@ -3,7 +3,7 @@
 ## Mit’s VPN Alpha 1.1 — 2026-10-31
 
 - Android: исправлен выбор `.vpn`, расширен импорт AmneziaVPN `vpn://`, добавлены безопасные коды ошибок и номер Alpha в приложении/APK.
-- [Отчёт и текст для Telegram](docs/releases/ALPHA_1_1_RU.md). Статус CI и проверки на устройстве указан в отчёте.
+- [Отчёт и текст для Telegram](docs/releases/ALPHA_1_1_RU.md). [APK Alpha 1.1](https://github.com/Mit-ping/Mit-s/actions/runs/41194053959/artifacts/13039809593). Анализ, тесты и сборка прошли; проверка AWG на устройстве ожидается.
 
 ## [0.16.0.dev] - 2024-2-18
 
