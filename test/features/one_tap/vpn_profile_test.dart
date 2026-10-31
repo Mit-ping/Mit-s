@@ -63,6 +63,57 @@ void main() {
     expect(() => prepareVpnProfile('$query&detour=direct'), throwsA(isA<VpnProfileException>()));
   });
 
+  test('imports old structured last_config without a native config string', () {
+    final root = amneziaStructuredContainer();
+    root['port'] = 22; // SSH port must not become the tunnel endpoint.
+    final out = endpoint(amneziaTestLink(root));
+    expect(out['private_key'], testWgKey(1));
+    expect(out['peers'][0]['port'], 51820);
+    expect(out['awg']['h1'], '1001');
+    expect(out['awg']['s1'], 15);
+    expect(out['peers'][0]['preshared_key'], testWgKey(33));
+  });
+
+  test('accepts known empty optional fields and supplements obfuscation metadata', () {
+    expect(endpoint(awgOptionalEmptyConfig())['awg']['i1'], '<b 0x01020304>');
+    final root = amneziaTestContainer(awgTestConfig().replaceFirst('S3 = 6', 'S3 = '));
+    final awg = (root['containers'] as List).single['awg'] as Map;
+    awg['S3'] = '6'; awg['I2'] = '';
+    expect(endpoint(amneziaTestLink(root))['awg']['s3'], 6);
+    expect(() => prepareVpnProfile(awgTestConfig().replaceFirst('S3 = 6', 'UnknownOption = ')), throwsA(isA<VpnProfileException>()));
+    expect(() => prepareVpnProfile(awgTestConfig().replaceFirst('S3 = 6', 'Jc = ')), throwsA(isA<VpnProfileException>()));
+  });
+
+  test('accepts an AWG connection export with a DNS container and explicit AWG selection', () {
+    final root = amneziaTestContainer(awgTestConfig());
+    (root['containers'] as List).add({'container': 'amnezia-dns', 'dns': {}});
+    expect(endpoint(amneziaTestLink(root))['type'], 'awg');
+    (root['containers'] as List).add({'container': 'amnezia-awg2', 'awg': {'last_config': jsonEncode({'config': awgTestConfig()})}});
+    expect(endpoint(amneziaTestLink(root))['type'], 'awg'); // defaultContainer selects awg.
+    root.remove('defaultContainer');
+    expect(() => prepareVpnProfile(amneziaTestLink(root)), throwsA(isA<VpnProfileException>()));
+  });
+
+  test('decodes .vpn URL, JSON, Base64URL and Qt binary without exposing source', () {
+    final root = amneziaStructuredContainer();
+    final url = amneziaTestLink(root);
+    final binary = base64Url.decode(base64Url.normalize(url.substring(6)));
+    for (final data in [utf8.encode(url), utf8.encode(jsonEncode(root)), utf8.encode(url.substring(6)), binary]) {
+      expect(endpoint(decodeVpnProfileBytes(data))['type'], 'awg');
+    }
+    try { prepareVpnProfile('vpn://bad'); fail('invalid key was accepted'); }
+    on VpnProfileException catch (e) { expect(e.message, contains('AWG-01')); expect(e.source, isNull); }
+    final noAwg = amneziaTestContainer(awgTestConfig()); noAwg['containers'] = [];
+    expect(() => prepareVpnProfile(amneziaTestLink(noAwg)), throwsA(isA<VpnProfileException>().having((e) => e.message, 'safe diagnostic', contains('AWG-02'))));
+  });
+
+  test('supports wrapped share keys without merging multiple profiles', () {
+    final link = amneziaTestLink(amneziaStructuredContainer());
+    final wrapped = link.substring(0, 36) + '\n \u200B' + link.substring(36);
+    expect(endpoint(wrapped)['type'], 'awg');
+    expect(() => prepareVpnProfile('$link\n$link'), throwsA(isA<VpnProfileException>()));
+  });
+
   test('still imports VLESS REALITY unchanged', () {
     final pbk = base64Url.encode(List.generate(32, (i) => i + 1)).replaceAll('=', '');
     final link = 'vless://00000000-0000-4000-8000-000000000001@example.com:443?security=reality&sni=example.com&fp=chrome&pbk=$pbk';

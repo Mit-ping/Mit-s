@@ -57,5 +57,10 @@ if len(sys.argv) > 1:
     badging = subprocess.run([str(aapt), 'dump', 'badging', str(apk)], check=True, capture_output=True, text=True).stdout
     labels = re.findall(r"application-label:'([^']+)'", badging)
     assert labels == ['Mit’s VPN'], labels
+    alpha = (root / 'lib/features/one_tap/mit_release.dart').read_text()
+    build_name = re.search(r"buildName = '([^']+)'", alpha).group(1)
+    build_number = re.search(r'buildNumber = ([0-9]+)', alpha).group(1)
+    assert f"versionName='{build_name}'" in badging, 'Android alpha version name mismatch'
+    assert f"versionCode='{build_number}'" in badging, 'Android alpha version code mismatch'
     assert any('mit_launcher' in line or 'mit_icon_art' in line for line in badging.splitlines() if line.startswith('application-icon-'))
     print('Packaged APK application label, launcher identity, artwork and legal asset: PASS')

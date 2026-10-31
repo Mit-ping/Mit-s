@@ -32,8 +32,15 @@ void main() {
     });
     final setup = await core.setup((baseDir: tmp, workingDir: tmp, tempDir: tmp), false, SetupMode.GRPC_NORMAL.value);
     expect(setup, isEmpty, reason: 'Native test setup must succeed');
-    for (final version in [1, 2, 3]) {
-      final prepared = prepareVpnProfile(amneziaTestLink(amneziaTestContainer(awgTestConfig(version: version))));
+    final samples = <String, String>{
+      for (final version in [1, 2, 3]) '$version': amneziaTestLink(amneziaTestContainer(awgTestConfig(version: version))),
+      'structured export': amneziaTestLink(amneziaStructuredContainer()),
+      'empty optional fields': amneziaTestLink(amneziaTestContainer(awgOptionalEmptyConfig())),
+      'vpn file': decodeVpnProfileBytes(utf8.encode(jsonEncode(amneziaStructuredContainer()))),
+    };
+    for (final sample in samples.entries) {
+      final version = sample.key;
+      final prepared = prepareVpnProfile(sample.value);
       final response = await core.fgClient.parse(ParseRequest(content: prepared.content, debug: false));
       expect(response.responseCode, ResponseCode.OK, reason: 'Native AWG $version: ${response.message}');
       final result = (jsonDecode(response.content)['endpoints'] as List).single as Map;

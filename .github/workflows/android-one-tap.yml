@@ -32,6 +32,20 @@ jobs:
       - name: Check Mit branding resources
         run: python3 .github/scripts/check_mit_branding.py
 
+      - name: Read Android alpha version
+        id: alpha
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          text = Path('lib/features/one_tap/mit_release.dart').read_text()
+          name = re.search(r"buildName = '([0-9A-Za-z.+-]+)'", text).group(1)
+          number = re.search(r'buildNumber = ([0-9]+)', text).group(1)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'name={name}\nnumber={number}\n')
+          print(f'Android alpha: {name} ({number})')
+          PY
+
       - name: Check strict SQLite migration runtime
         run: |
           python3 - <<'PY'
@@ -112,7 +126,7 @@ jobs:
 
       - name: Build pilot APK with a disposable debug signing key
         id: build
-        run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true 2>&1 | tee "$RUNNER_TEMP/android-build.log"
+        run: flutter build apk --debug --dart-define=ONE_TAP_VPN=true --build-name=${{ steps.alpha.outputs.name }} --build-number=${{ steps.alpha.outputs.number }} 2>&1 | tee "$RUNNER_TEMP/android-build.log"
 
       - name: Summarize build failure
         if: always() && steps.build.outcome == 'failure'

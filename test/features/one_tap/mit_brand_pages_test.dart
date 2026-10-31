@@ -10,6 +10,7 @@ import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/one_tap/mit_brand.dart';
+import 'package:hiddify/features/one_tap/mit_release.dart';
 import 'package:hiddify/features/one_tap/mit_brand_pages.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
@@ -73,6 +74,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('Hiddify'), findsNothing);
       expect(find.byType(MitLogo), findsOneWidget);
+      if (page.key == 'about') expect(find.textContaining(MitRelease.label), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }

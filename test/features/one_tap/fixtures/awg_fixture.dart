@@ -53,3 +53,20 @@ String amneziaTestLink(Map<String, dynamic> container, {bool compressed = true})
   final bytes = compressed ? [...prefix.buffer.asUint8List(), ...zlib.encode(json)] : json;
   return 'vpn://${base64Url.encode(bytes).replaceAll('=', '')}';
 }
+
+
+Map<String, dynamic> amneziaStructuredContainer() {
+  final root = amneziaTestContainer('');
+  final awg = (root['containers'] as List).single['awg'] as Map;
+  awg['Jc'] = '4'; awg['Jmin'] = '40'; awg['Jmax'] = '70';
+  awg['S1'] = '15'; awg['S2'] = '18';
+  awg['H1'] = '1001'; awg['H2'] = '2001'; awg['H3'] = '3001'; awg['H4'] = '4001';
+  awg['last_config'] = jsonEncode({
+    'client_priv_key': testWgKey(1), 'server_pub_key': testWgKey(65), 'psk_key': testWgKey(33),
+    'client_ip': ['10.8.0.2/32', 'fd42::2/128'], 'allowed_ips': ['0.0.0.0/0', '::/0'],
+    'hostName': '192.0.2.10', 'port': 51820, 'mtu': '1280', 'persistent_keep_alive': '25',
+  });
+  return root;
+}
+
+String awgOptionalEmptyConfig() => awgTestConfig().replaceFirst('[Peer]', 'I2 = \nI3 = \nI4 = \nI5 = \nHeaderProtectionKey = \n[Peer]');

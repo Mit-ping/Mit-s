@@ -16,17 +16,20 @@ Future<String> readVpnProfileText(Stream<List<int>> stream) async {
     if (chunk.length > maxVpnProfileBytes - bytes.length) throw const FormatException('Слишком большой профиль.');
     bytes.add(chunk);
   }
-  return utf8.decode(bytes.takeBytes());
+  return decodeVpnProfileBytes(bytes.takeBytes());
 }
 
 Future<String?> pickVpnProfileFile() async {
   final result = await FilePicker.platform.pickFiles(
-    type: FileType.custom, allowedExtensions: ['conf', 'txt'],
+    // Android providers commonly expose .vpn as application/octet-stream;
+    // MIME filtering would disable the very document the user needs to select.
+    type: FileType.any,
     allowMultiple: false, withData: false, withReadStream: true,
   );
   if (result == null) return null;
   try {
     final picked = result.files.single;
+    if (!{'vpn', 'conf', 'txt'}.contains(picked.extension?.toLowerCase())) throw const FormatException('Неподдерживаемый файл.');
     if (picked.size > maxVpnProfileBytes) throw const FormatException('Слишком большой профиль.');
     final stream = picked.readStream ?? (picked.path == null ? null : File(picked.path!).openRead());
     if (stream == null) throw const FormatException('Не удалось прочитать профиль.');
@@ -62,7 +65,7 @@ class _MitProfileImportDialogState extends ConsumerState<MitProfileImportDialog>
       // field; the platform's default single-line paste would strip them.
       controller.text = text;
     } catch (_) {
-      if (mounted) setState(() { error = 'Не удалось прочитать профиль. Используйте текстовый файл .conf или .txt до 64 КБ.'; });
+      if (mounted) setState(() { error = 'Не удалось прочитать профиль. Выберите .vpn, .conf или .txt до 64 КБ (FILE-01).'; });
     } finally {
       if (mounted) setState(() { reading = false; });
     }
@@ -76,7 +79,7 @@ class _MitProfileImportDialogState extends ConsumerState<MitProfileImportDialog>
     title: const Text('Профиль VPN'),
     scrollable: true,
     content: SizedBox(width: 360, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Вставьте клиентский ключ vpn:// из Amnezia, ссылку awg:// или VLESS + REALITY. Для AWG также доступен файл .conf.'),
+      const Text('Вставьте клиентский ключ vpn:// из Amnezia, ссылку awg:// или VLESS + REALITY. Можно выбрать файл amnezia_config.vpn или .conf.'),
       const SizedBox(height: 16),
       TextField(
         key: const ValueKey('mit-profile-input'),

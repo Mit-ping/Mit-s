@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiddify/features/one_tap/mit_profile_import_dialog.dart';
@@ -8,6 +9,28 @@ import 'package:hiddify/features/one_tap/vpn_profile.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import 'fixtures/awg_fixture.dart';
+
+class _Picker extends FilePicker {
+  _Picker(this.data, {this.fileName = 'amnezia_config.vpn'});
+  final List<int> data;
+  final String fileName;
+  FileType? chosenType;
+  List<String>? extensions;
+  bool cleaned = false;
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle, String? initialDirectory, FileType type = FileType.any,
+    List<String>? allowedExtensions, Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true, int compressionQuality = 30,
+    bool allowMultiple = false, bool withData = false, bool withReadStream = false,
+    bool lockParentWindow = false, bool readSequential = false,
+  }) async {
+    chosenType = type; extensions = allowedExtensions;
+    return FilePickerResult([PlatformFile(name: fileName, size: data.length, readStream: Stream.value(data))]);
+  }
+  @override
+  Future<bool?> clearTemporaryFiles() async { cleaned = true; return true; }
+}
 
 void main() {
   Future<void> open(WidgetTester tester, {required Future<String?> Function() loader, required ValueChanged<String?> result}) async {
@@ -65,6 +88,24 @@ void main() {
     expect(find.textContaining('Не удалось прочитать профиль'), findsOneWidget);
     expect(find.textContaining('private/path'), findsNothing);
     expect(find.textContaining(testWgKey(1)), findsNothing);
+  });
+
+  test('Android picker permits octet-stream .vpn documents and validates after selection', () async {
+    FilePicker? previous;
+    try { previous = FilePicker.platform; } catch (_) {}
+    addTearDown(() { if (previous != null) FilePicker.platform = previous!; });
+    final data = utf8.encode(amneziaTestLink(amneziaStructuredContainer()));
+    final picker = _Picker(data);
+    FilePicker.platform = picker;
+    final text = await pickVpnProfileFile();
+    expect(picker.chosenType, FileType.any);
+    expect(picker.extensions, isNull);
+    expect(picker.cleaned, true);
+    expect(prepareVpnProfile(text!).protocol, MitVpnProtocol.amneziaWg);
+    final wrong = _Picker(data, fileName: 'image.png');
+    FilePicker.platform = wrong;
+    await expectLater(pickVpnProfileFile(), throwsFormatException);
+    expect(wrong.cleaned, true);
   });
 
   test('bounded file reader enforces actual bytes and strict UTF8', () async {

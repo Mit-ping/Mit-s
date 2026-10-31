@@ -7,6 +7,7 @@ import 'package:hiddify/features/common/general_pref_tiles.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/one_tap/mit_brand.dart';
 import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
+import 'package:hiddify/features/one_tap/mit_release.dart';
 import 'package:hiddify/features/one_tap/vpn_profile.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
@@ -76,6 +77,8 @@ class MitAboutPage extends StatelessWidget {
       const Text(MitBrand.name, textAlign: TextAlign.center, style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800)),
       const SizedBox(height: 8),
       const Text('Тестовая Android-версия', textAlign: TextAlign.center),
+      const SizedBox(height: 8),
+      const Text('${MitRelease.label} · ${MitRelease.buildName} (${MitRelease.buildNumber})', textAlign: TextAlign.center),
       const SizedBox(height: 24),
       const Text('Подключение VLESS + REALITY или AmneziaWG и автоматическая маршрутизация. Прямые соединения с российскими ресурсами и локальной сетью не проходят через VPN.'),
       const SizedBox(height: 16),

@@ -35,6 +35,10 @@ class VpnProfileException extends FormatException {
 }
 
 const _invalid = VpnProfileException('Нужна ссылка VLESS + REALITY или клиентский профиль AmneziaWG.');
+const _share = VpnProfileException('Не удалось распаковать ключ Amnezia (AWG-01). Скопируйте его целиком.');
+const _container = VpnProfileException('В экспорте не найден однозначный профиль AmneziaWG (AWG-02). Выберите AWG при экспорте.');
+const _client = VpnProfileException('В экспорте нет полной клиентской конфигурации AWG (AWG-03).');
+const _parameters = VpnProfileException('Параметры профиля AWG не поддерживаются или повреждены (AWG-04).');
 const _admin = VpnProfileException('Используйте ключ «Поделиться подключением» Amnezia, а не полный доступ к серверу.');
 const _remote = VpnProfileException('Нужен готовый клиентский ключ AWG или файл .conf. Ключи доступа к сервису Amnezia пока не поддерживаются.');
 
@@ -46,7 +50,7 @@ PreparedVpnProfile prepareVpnProfile(String input) {
       return PreparedVpnProfile(MitVpnProtocol.reality, validateRealityProfile(text));
     }
     if (text.startsWith('vpn://')) {
-      text = _amneziaClientConfig(text.substring(6));
+      text = _amneziaClientConfig(_sharePayload(text.substring(6)));
     } else if (text.startsWith('awg://')) {
       final payload = text.substring(6);
       if (RegExp(r'^[A-Za-z0-9+/_=-]+$').hasMatch(payload)) {
@@ -55,10 +59,17 @@ PreparedVpnProfile prepareVpnProfile(String input) {
         text = _awgLinkConfig(text);
       }
     }
-    final endpoint = _awgEndpoint(text);
+    Map<String, dynamic> endpoint;
+    try {
+      endpoint = _awgEndpoint(text);
+    } catch (_) {
+      if (input.trim().startsWith('vpn://') || input.trim().startsWith('awg://') || text.contains('[Interface]')) throw _parameters;
+      rethrow;
+    }
     return PreparedVpnProfile(MitVpnProtocol.amneziaWg, jsonEncode({'endpoints': [endpoint]}));
-  } on FormatException catch (e) {
-    if (identical(e, _admin) || identical(e, _remote)) rethrow;
+  } on VpnProfileException {
+    rethrow;
+  } on FormatException {
     throw _invalid;
   } catch (_) {
     throw _invalid;
@@ -72,7 +83,9 @@ List<int> _decodeBase64(String text) {
   return decoded;
 }
 
-String _amneziaClientConfig(String payload) {
+String _sharePayload(String value) => value.replaceAll(RegExp(r'[\s\u200B\uFEFF]'), '');
+
+Map<String, dynamic> _unpackAmnezia(String payload) {
   final packed = _decodeBase64(payload);
   List<int> bytes;
   if (packed.isNotEmpty && packed.first == 0x7B) {
@@ -96,21 +109,122 @@ String _amneziaClientConfig(String payload) {
   }
   final decoded = jsonDecode(utf8.decode(bytes));
   if (decoded is! Map<String, dynamic>) throw _invalid;
+  return decoded;
+}
+
+String _amneziaClientConfig(String payload) {
+  final Map<String, dynamic> decoded;
+  try {
+    decoded = _unpackAmnezia(payload);
+  } catch (_) {
+    throw _share;
+  }
   for (final key in ['userName', 'password']) {
     if (decoded[key] != null && decoded[key] != '') throw _admin;
   }
   if (decoded.containsKey('api_key') || decoded.containsKey('auth_data')) throw _remote;
   final containers = decoded['containers'];
-  if (containers is! List || containers.length != 1) throw _invalid;
-  final container = containers.single;
-  if (container is! Map || container['container'] is! String ||
-      !RegExp(r'^amnezia-awg(?:[-_]?\w+)?$').hasMatch(container['container'] as String)) throw _invalid;
-  final awg = container['awg'];
-  if (awg is! Map) throw _invalid;
-  final last = awg['last_config'];
-  final client = last is String ? jsonDecode(last) : last;
-  if (client is! Map || client['config'] is! String) throw _invalid;
-  return client['config'] as String;
+  if (containers is! List) throw _container;
+  final candidates = containers.whereType<Map>().where((c) => c['container'] is String &&
+      RegExp(r'^amnezia-awg(?:[-_]?\w+)?$').hasMatch(c['container'] as String) && c['awg'] is Map).toList();
+  if (candidates.length != 1) {
+    final selected = candidates.where((c) => c['container'] == decoded['defaultContainer']).toList();
+    if (selected.length != 1) throw _container;
+    candidates..clear()..add(selected.single);
+  }
+  final awg = candidates.single['awg'] as Map;
+  dynamic client = awg['last_config'];
+  try {
+    for (var depth = 0; depth < 2 && client is String; depth++) {
+      if (client.trimLeft().startsWith('[Interface]')) return _mergeAwgFields(client, const {}, awg);
+      client = jsonDecode(client);
+    }
+    if (client is! Map) throw _client;
+    final native = client['config'];
+    final config = native is String && native.trim().isNotEmpty ? native : _structuredAwgConfig(client, decoded);
+    return _mergeAwgFields(config, client, awg);
+  } on VpnProfileException {
+    rethrow;
+  } catch (_) {
+    throw _client;
+  }
+}
+
+String _scalar(dynamic value) {
+  if (value == null) return '';
+  if (value is! String && value is! int && value is! bool) throw _client;
+  final text = '$value'.trim();
+  if (RegExp(r'[\x00-\x1F\x7F]').hasMatch(text)) throw _client;
+  return text;
+}
+
+String _listValue(dynamic value) => value is List ? value.map(_scalar).where((s) => s.isNotEmpty).join(', ') : _scalar(value);
+
+String _structuredAwgConfig(Map client, Map root) {
+  final host = _scalar(client['hostName'] ?? root['hostName']);
+  final port = _scalar(client['port']); // Never use root.port: that is an SSH port.
+  final endpoint = host.contains(':') && !host.startsWith('[') ? '[$host]:$port' : '$host:$port';
+  final local = <String, String>{
+    'PrivateKey': _scalar(client['client_priv_key']),
+    'Address': _listValue(client['client_ip']),
+    'MTU': _scalar(client['mtu']),
+  };
+  final peer = <String, String>{
+    'PublicKey': _scalar(client['server_pub_key']),
+    'PresharedKey': _scalar(client['psk_key']),
+    'AllowedIPs': _listValue(client['allowed_ips']),
+    'PersistentKeepalive': _scalar(client['persistent_keep_alive']),
+    'Endpoint': endpoint,
+  };
+  if (local['PrivateKey']!.isEmpty || local['Address']!.isEmpty || peer['PublicKey']!.isEmpty || host.isEmpty || port.isEmpty) throw _client;
+  String lines(Map<String, String> values) => values.entries.where((e) => e.value.isNotEmpty).map((e) => '${e.key} = ${e.value}').join('\n');
+  return '[Interface]\n${lines(local)}\n[Peer]\n${lines(peer)}';
+}
+
+String _mergeAwgFields(String config, Map client, Map server) {
+  // Some old exports contain escaped newlines or keep obfuscation only in the
+  // last_config/server fields. An explicit nonempty native value takes priority.
+  var text = config.trim().replaceFirst(RegExp(r'^\uFEFF'), '');
+  if (!text.contains('\n') && text.contains(r'\n')) text = text.replaceAll(r'\r\n', '\n').replaceAll(r'\n', '\n');
+  final insert = <String>[];
+  for (final field in _awgFields.entries) {
+    final raw = client[field.key] ?? client[field.value] ?? server[field.key] ?? server[field.value];
+    final value = _scalar(raw);
+    if (value.isEmpty) continue;
+    final pattern = RegExp('^[ \\t]*${RegExp.escape(field.key)}[ \\t]*=[^\\r\\n]*', multiLine: true);
+    final existing = pattern.firstMatch(text);
+    if (existing == null) {
+      insert.add('${field.key} = $value');
+    } else if (existing.group(0)!.split('=').skip(1).join('=').trim().isEmpty) {
+      text = text.replaceFirstMapped(pattern, (_) => '${field.key} = $value');
+    }
+  }
+  if (insert.isNotEmpty) {
+    final header = RegExp(r'^[ \t]*\[Interface\][ \t]*\r?$', multiLine: true);
+    if (!header.hasMatch(text)) throw _client;
+    text = text.replaceFirstMapped(header, (_) => '[Interface]\n${insert.join('\n')}');
+  }
+  return text;
+}
+
+/// .vpn may be a share URL, Amnezia JSON, Base64URL or Qt-compressed bytes.
+/// Conversion stays local; the resulting text still goes through the validator.
+String decodeVpnProfileBytes(List<int> bytes) {
+  if (bytes.isEmpty || bytes.length > maxVpnProfileBytes) throw _invalid;
+  if (bytes.length >= 6 && bytes[4] == 0x78) {
+    final expected = ByteData.sublistView(Uint8List.fromList(bytes), 0, 4).getUint32(0);
+    if (expected > 0 && expected <= maxVpnProfileBytes) return 'vpn://${base64Url.encode(bytes)}';
+  }
+  String? text;
+  try { text = utf8.decode(bytes).trim(); } on FormatException { /* Qt binary export. */ }
+  if (text != null) {
+    if (text.startsWith('{')) return 'vpn://${base64Url.encode(utf8.encode(text))}';
+    final payload = _sharePayload(text);
+    if (RegExp(r'^[A-Za-z0-9+/_-]+={0,2}$').hasMatch(payload)) return 'vpn://$payload';
+    return text;
+  }
+  if (bytes.length < 6 || bytes[4] != 0x78) throw _share;
+  return 'vpn://${base64Url.encode(bytes)}';
 }
 
 class _BoundedBytes extends ByteConversionSinkBase {
@@ -157,7 +271,7 @@ Map<String, dynamic> _awgEndpoint(String text) {
     final key = line.substring(0, split).trim();
     // Comments do not become part of keys or packet templates.
     final value = line.substring(split + 1).split(RegExp(r'\s[#;]')).first.trim();
-    if (value.isEmpty || current.containsKey(key) || RegExp(r'[\x00-\x1F\x7F]').hasMatch(value)) throw _invalid;
+    if (current.containsKey(key) || RegExp(r'[\x00-\x1F\x7F]').hasMatch(value)) throw _invalid;
     current[key] = value;
   }
   final local = sections['[Interface]'];
@@ -166,6 +280,10 @@ Map<String, dynamic> _awgEndpoint(String text) {
   final interfaceFields = {'PrivateKey', 'Address', 'DNS', 'MTU', 'ListenPort', ..._awgFields.keys};
   const peerFields = {'PublicKey', 'PresharedKey', 'AllowedIPs', 'Endpoint', 'PersistentKeepalive'};
   if (local.keys.any((k) => !interfaceFields.contains(k)) || peer.keys.any((k) => !peerFields.contains(k))) throw _invalid;
+  for (final key in ['PrivateKey', 'Address']) { if (local[key] == null || local[key]!.isEmpty) throw _invalid; }
+  for (final key in ['PublicKey', 'Endpoint']) { if (peer[key] == null || peer[key]!.isEmpty) throw _invalid; }
+  local.removeWhere((key, value) => value.isEmpty);
+  peer.removeWhere((key, value) => value.isEmpty);
   final server = Uri.parse('udp://${peer['Endpoint'] ?? ''}');
   final host = _uriHost(server);
   if (server.host.isEmpty || !server.hasPort || server.userInfo.isNotEmpty || server.path.isNotEmpty ||
