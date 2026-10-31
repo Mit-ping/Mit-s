@@ -46,6 +46,8 @@ void main() {
   final cases = <String, (Widget, ConnectionStatus)>{
     'disconnected': (const OneTapHomePage(), const Disconnected()),
     'connected': (const OneTapHomePage(), const Connected()),
+    'connecting': (const OneTapHomePage(), const Connecting()),
+    'waiting': (const OneTapHomePage(), const Waiting()),
     'error': (const OneTapHomePage(), const Disconnected(ConnectionFailure.invalidConfig('synthetic-error'))),
     'intro': (const MitIntroPage(), const Disconnected()),
     'settings': (const MitSettingsPage(), const Disconnected()),
@@ -74,7 +76,12 @@ void main() {
       final key = GlobalKey();
       await tester.pumpWidget(UncontrolledProviderScope(
         container: container,
-        child: RepaintBoundary(key: key, child: MaterialApp(home: entry.value.$1)),
+        child: RepaintBoundary(key: key, child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!,
+          ),
+          home: entry.value.$1,
+        )),
       ));
       await tester.runAsync(() async {
         final context = key.currentContext!;

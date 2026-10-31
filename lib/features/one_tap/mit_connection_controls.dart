@@ -4,6 +4,7 @@ import 'package:hiddify/features/connection/model/connection_status.dart';
 const mitIdle = Color(0xFFF5F7F5);
 const mitGreen = Color(0xFF78FF45);
 const mitBackground = Color(0xFF030805);
+const mitConnectionTransition = Duration(milliseconds: 900);
 
 /// Presentation only: the caller supplies core status and the real action.
 class MitConnectionControls extends StatelessWidget {
@@ -54,40 +55,48 @@ class MitConnectionControls extends StatelessWidget {
           child: ExcludeSemantics(
             child: SizedBox.square(
               dimension: 226,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: color.withValues(alpha: .20)),
-                  boxShadow: [BoxShadow(color: color.withValues(alpha: .20), blurRadius: 40, spreadRadius: 4)],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(9),
-                  child: AnimatedContainer(
-                    duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 220),
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: color),
+                duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : mitConnectionTransition,
+                curve: Curves.easeInOutCubic,
+                builder: (context, animatedColor, child) {
+                  final glow = animatedColor ?? color;
+                  return DecoratedBox(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: RadialGradient(colors: [Color.lerp(mitBackground, color, .12)!, mitBackground]),
-                      border: Border.all(color: color, width: 4),
-                      boxShadow: [BoxShadow(color: color.withValues(alpha: .44), blurRadius: 19, spreadRadius: 1)],
+                      border: Border.all(color: glow.withValues(alpha: .20)),
+                      boxShadow: [BoxShadow(color: glow.withValues(alpha: .20), blurRadius: 40, spreadRadius: 4)],
                     ),
-                    child: Material(
-                      color: Colors.transparent,
-                      shape: const CircleBorder(),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        key: const ValueKey('mit-power-button'),
-                        customBorder: const CircleBorder(),
-                        onTap: onPressed,
-                        child: Icon(
-                          Icons.power_settings_new_rounded,
-                          color: color,
-                          size: 94,
-                          shadows: [Shadow(color: color.withValues(alpha: .5), blurRadius: 22)],
+                    child: Padding(
+                      padding: const EdgeInsets.all(9),
+                      child: DecoratedBox(
+                        key: const ValueKey('mit-power-ring'),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(colors: [Color.lerp(mitBackground, glow, .12)!, mitBackground]),
+                          border: Border.all(color: glow, width: 4),
+                          boxShadow: [BoxShadow(color: glow.withValues(alpha: .44), blurRadius: 19, spreadRadius: 1)],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          shape: const CircleBorder(),
+                          clipBehavior: Clip.antiAlias,
+                          child: InkWell(
+                            key: const ValueKey('mit-power-button'),
+                            customBorder: const CircleBorder(),
+                            onTap: onPressed,
+                            child: Icon(
+                              Icons.power_settings_new_rounded,
+                              color: glow,
+                              size: 94,
+                              shadows: [Shadow(color: glow.withValues(alpha: .5), blurRadius: 22)],
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
               ),
             ),
           ),

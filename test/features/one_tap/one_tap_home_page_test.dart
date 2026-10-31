@@ -54,16 +54,19 @@ void main() {
         connectionNotifierProvider.overrideWith(() => _Core(status, onToggle ?? () {})),
         dialogNotifierProvider.overrideWith(_Dialogs.new),
       ],
-      child: const MaterialApp(home: OneTapHomePage()),
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!,
+        ),
+        home: const OneTapHomePage(),
+      ),
     ));
     await tester.pumpAndSettle();
   }
 
   Color ringColor(WidgetTester tester) {
-    final ring = tester.widget<AnimatedContainer>(find.descendant(
-      of: find.byType(MitConnectionControls), matching: find.byType(AnimatedContainer),
-    ));
-    return ((ring.decoration! as BoxDecoration).border! as Border).top.color;
+    final ring = tester.widget<DecoratedBox>(find.byKey(const ValueKey('mit-power-ring')));
+    return ((ring.decoration as BoxDecoration).border! as Border).top.color;
   }
 
   testWidgets('empty state imports explicitly and rejects subscription URLs before repository access', (tester) async {
@@ -132,7 +135,12 @@ void main() {
         connectionNotifierProvider.overrideWith(() => core),
         bottomSheetsNotifierProvider.overrideWith(() => _Sheets(() => opened++)),
       ],
-      child: const MaterialApp(home: OneTapHomePage()),
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!,
+        ),
+        home: const OneTapHomePage(),
+      ),
     ));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Меню'));
@@ -142,6 +150,88 @@ void main() {
     await tester.tap(find.text('Выбрать профиль'));
     await tester.pumpAndSettle();
     expect(opened, 0);
+  });
+
+  testWidgets('only confirmed success reveals artwork and reduced motion skips the transition', (tester) async {
+    final core = _Core(const Disconnected(), () {});
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activeProfileProvider.overrideWith(() => _Active(profile)),
+        connectionNotifierProvider.overrideWith(() => core),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!,
+        ),
+        home: const OneTapHomePage(),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    for (final state in <ConnectionStatus>[
+      const Connecting(), const Waiting(), const NoAvailableProxies(), const HotReloading(),
+      const Connected(), const Disconnecting(),
+      const Disconnected(ConnectionFailure.invalidConfig('private-error')),
+    ]) {
+      core.emit(state);
+      await tester.pumpAndSettle();
+      final art = tester.widget<AnimatedOpacity>(find.byKey(const ValueKey('mit-connected-artwork')));
+      expect(art.opacity, state is Connected ? 1 : 0);
+      expect(art.duration, Duration.zero);
+      expect(ringColor(tester), state is Connected ? mitGreen : isNot(mitGreen));
+    }
+  });
+
+  testWidgets('success crossfades the artwork and power glow and disconnect reverses mid-transition', (tester) async {
+    var calls = 0;
+    final core = _Core(const Disconnected(), () => calls++);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [
+        activeProfileProvider.overrideWith(() => _Active(profile)),
+        connectionNotifierProvider.overrideWith(() => core),
+        dialogNotifierProvider.overrideWith(_Dialogs.new),
+      ],
+      child: MaterialApp(
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(disableAnimations: false), child: child!,
+        ),
+        home: const OneTapHomePage(),
+      ),
+    ));
+    await tester.pump();
+    double visibleArtwork() => tester.widget<FadeTransition>(find.descendant(
+      of: find.byKey(const ValueKey('mit-connected-artwork')), matching: find.byType(FadeTransition),
+    )).opacity.value;
+    expect(visibleArtwork(), 0);
+    expect(ringColor(tester), mitIdle);
+    await tester.tap(find.byKey(const ValueKey('mit-power-button')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 2));
+    expect(calls, 1);
+    expect(visibleArtwork(), 0);
+    for (final state in <ConnectionStatus>[const Connecting(), const Waiting()]) {
+      core.emit(state);
+      await tester.pump();
+      await tester.pump(mitConnectionTransition);
+      expect(visibleArtwork(), 0);
+      expect(ringColor(tester), isNot(mitGreen));
+    }
+    core.emit(const Connected());
+    await tester.pump();
+    expect(visibleArtwork(), 0);
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(visibleArtwork(), allOf(greaterThan(0), lessThan(1)));
+    expect(ringColor(tester), isNot(mitGreen));
+    core.emit(const Disconnected());
+    await tester.pump();
+    await tester.pump(mitConnectionTransition);
+    expect(visibleArtwork(), 0);
+    expect(ringColor(tester), mitIdle);
+    core.emit(const Connected());
+    await tester.pump();
+    await tester.pump(mitConnectionTransition);
+    expect(visibleArtwork(), 1);
+    expect(ringColor(tester), mitGreen);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('error screen hides native error contents', (tester) async {

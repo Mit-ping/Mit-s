@@ -6,6 +6,7 @@ import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
+import 'package:hiddify/features/one_tap/mit_connection_backdrop.dart';
 import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
 import 'package:hiddify/features/one_tap/reality_profile.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
@@ -127,16 +128,7 @@ class OneTapHomePage extends HookConsumerWidget {
           backgroundColor: mitBackground,
           body: Stack(
             children: [
-              Positioned.fill(
-                child: ExcludeSemantics(child: Image.asset('assets/images/mit_vpn_background.png', fit: BoxFit.cover, alignment: Alignment.topCenter)),
-              ),
-              const Positioned.fill(
-                child: DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(
-                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                  colors: [Color(0x33000000), Color(0x22000000), Color(0xDD030805), mitBackground],
-                  stops: [0, .38, .74, 1],
-                ))),
-              ),
+              Positioned.fill(child: MitConnectionBackdrop(connected: current is Connected && !status.hasError)),
               SafeArea(
                 child: LayoutBuilder(builder: (context, constraints) => SingleChildScrollView(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
@@ -156,7 +148,7 @@ class OneTapHomePage extends HookConsumerWidget {
                         importing: busy.value, onPressed: canToggle ? powerPressed : null,
                       ),
                       const SizedBox(height: 22),
-                      const Icon(Icons.shield_outlined, color: mitGreen, size: 28),
+                      Icon(Icons.shield_outlined, color: current is Connected && !status.hasError ? mitGreen : mitIdle, size: 28),
                       const SizedBox(height: 8),
                       const Text('Подключение под вашим контролем', textAlign: TextAlign.center, style: TextStyle(color: Color(0xFFB1BDB4), fontSize: 12)),
                       const SizedBox(height: 24),
