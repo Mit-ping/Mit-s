@@ -72,6 +72,11 @@ void main() {
     expect(out['awg']['h1'], '1001');
     expect(out['awg']['s1'], 15);
     expect(out['peers'][0]['preshared_key'], testWgKey(33));
+    final awg = (root['containers'] as List).single['awg'] as Map;
+    final client = jsonDecode(awg['last_config'] as String) as Map;
+    client['Jc'] = ''; // Old clients serialize an unset field as an empty string.
+    awg['last_config'] = jsonEncode(client);
+    expect(endpoint(amneziaTestLink(root))['awg']['jc'], 4);
   });
 
   test('accepts known empty optional fields and supplements obfuscation metadata', () {

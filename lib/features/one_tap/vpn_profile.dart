@@ -188,8 +188,11 @@ String _mergeAwgFields(String config, Map client, Map server) {
   if (!text.contains('\n') && text.contains(r'\n')) text = text.replaceAll(r'\r\n', '\n').replaceAll(r'\n', '\n');
   final insert = <String>[];
   for (final field in _awgFields.entries) {
-    final raw = client[field.key] ?? client[field.value] ?? server[field.key] ?? server[field.value];
-    final value = _scalar(raw);
+    var value = '';
+    for (final raw in [client[field.key], client[field.value], server[field.key], server[field.value]]) {
+      value = _scalar(raw);
+      if (value.isNotEmpty) break;
+    }
     if (value.isEmpty) continue;
     final pattern = RegExp('^[ \\t]*${RegExp.escape(field.key)}[ \\t]*=[^\\r\\n]*', multiLine: true);
     final existing = pattern.firstMatch(text);
