@@ -71,6 +71,12 @@ void main() {
     expect(prepared.content, link);
   });
 
+  test('preserves bounded packet templates with random bytes, text, timestamp and QUIC decoy', () {
+    const template = '<b 0x0102><r 32><rc 8><rd 8><t><dz 2><d><ds><qi example.com>';
+    final config = awgTestConfig().replaceFirst('<b 0x01020304>', template);
+    expect(endpoint(config)['awg']['i1'], template);
+  });
+
   test('never accepts server administration, subscriptions or ambiguous containers', () {
     final admin = amneziaTestContainer(awgTestConfig())..['password'] = 'private-admin-password';
     expect(() => prepareVpnProfile(amneziaTestLink(admin)), throwsA(isA<VpnProfileException>().having((e) => e.message, 'safe explanation', contains('Поделиться подключением'))));
@@ -109,6 +115,14 @@ void main() {
     'bad header range': (s) => s.replaceFirst('1001-1009', '1009-1001'),
     'bad header key': (s) => s.replaceFirst(List.filled(64, '1').join(), 'bad-key'),
     'bad boolean': (s) => s.replaceFirst('RandomTrailers = 1', 'RandomTrailers = invalid'),
+    'negative template size': (s) => s.replaceFirst('<b 0x01020304>', '<r -1>'),
+    'unbounded random packet': (s) => s.replaceFirst('<b 0x01020304>', '<r 999999999>'),
+    'unbounded digit packet': (s) => s.replaceFirst('<b 0x01020304>', '<rd 999999999>'),
+    'unbounded size field': (s) => s.replaceFirst('<b 0x01020304>', '<dz 999999999>'),
+    'oversized complete packet': (s) => s.replaceFirst('<b 0x01020304>', '<r 40000><rc 40000>'),
+    'invalid byte packet': (s) => s.replaceFirst('<b 0x01020304>', '<b 0x123>'),
+    'unknown packet instruction': (s) => s.replaceFirst('<b 0x01020304>', '<unknown 4>'),
+    'malformed packet instruction': (s) => s.replaceFirst('<b 0x01020304>', '<r 32'),
     'oversized input': (s) => 'x' * (maxVpnProfileBytes + 1),
   };
   for (final entry in invalid.entries) {

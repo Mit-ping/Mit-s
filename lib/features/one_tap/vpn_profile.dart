@@ -179,7 +179,7 @@ Map<String, dynamic> _awgEndpoint(String text) {
     final value = local[entry.key];
     if (value == null) continue;
     if (entry.key.startsWith('I') && entry.key.length == 2) {
-      if (value.length > 8192) throw _invalid;
+      _validatePacketTemplate(value);
       awg[entry.value] = value;
     } else if (entry.key == 'HeaderProtectionKey') {
       if (!RegExp(r'^[0-9a-fA-F]{64}$').hasMatch(value)) throw _invalid;
@@ -211,6 +211,35 @@ Map<String, dynamic> _awgEndpoint(String text) {
       'persistent_keepalive_interval': _number(peer['PersistentKeepalive'] ?? '0', 0, 65535),
     }],
   };
+}
+
+void _validatePacketTemplate(String value) {
+  if (value.length > 8192) throw _invalid;
+  var offset = 0;
+  var size = 0;
+  for (final tag in RegExp(r'<([^<>]+)>').allMatches(value)) {
+    if (value.substring(offset, tag.start).trim().isNotEmpty) throw _invalid;
+    final parts = tag.group(1)!.trim().split(RegExp(r'\s+'));
+    final name = parts.first;
+    if (name == 'b' && parts.length == 2) {
+      final hex = parts[1].replaceFirst(RegExp(r'^0x'), '');
+      if (hex.isEmpty || hex.length.isOdd || !RegExp(r'^[0-9a-fA-F]+$').hasMatch(hex)) throw _invalid;
+      size += hex.length ~/ 2;
+    } else if ({'r', 'rc', 'rd', 'dz'}.contains(name) && parts.length == 2) {
+      // Native builders accept an arbitrary signed int, then allocate/slice
+      // using it during a handshake. Bound every part and the complete packet.
+      size += _number(parts[1], 0, 65507);
+    } else if ({'t', 'd', 'ds'}.contains(name) && parts.length == 1) {
+      size += name == 't' ? 4 : 0; // I packets have no source data.
+    } else if (name == 'qi' && parts.length == 2 && _validHost(parts[1])) {
+      size += 1200;
+    } else {
+      throw _invalid;
+    }
+    if (size > 65507) throw _invalid;
+    offset = tag.end;
+  }
+  if (offset == 0 || value.substring(offset).trim().isNotEmpty) throw _invalid;
 }
 
 String _key(String text, {bool allowZero = false}) {
