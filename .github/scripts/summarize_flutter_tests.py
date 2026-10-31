@@ -28,6 +28,7 @@ def summarize(path):
     names = {}
     results = collections.Counter()
     errors = []
+    framework_errors = {}
     finished = set()
     completed = False
     for line in path.read_text(errors="replace").splitlines():
@@ -47,6 +48,11 @@ def summarize(path):
                 results["skipped" if event.get("skipped") else event["result"]] += 1
         elif kind == "error":
             errors.append((event.get("testID"), event.get("error", "Unknown test error")))
+        elif kind == "print" and "EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK" in str(event.get("message", "")):
+            # Flutter emits assertion details as a print event, followed by an
+            # otherwise unhelpful generic "Test failed" error. Publish only the
+            # sanitized exception for a failed test, never the raw test stream.
+            framework_errors[event.get("testID")] = str(event["message"])[:8000]
         elif kind == "done":
             completed = True
     if not completed:
@@ -56,6 +62,7 @@ def summarize(path):
     print(f"<p>Reporter completed: {completed}. Outcomes: {html.escape(str(dict(results)))}</p>")
     for test_id, error in errors[:20]:
         name = names.get(test_id, 'Test loading/runner')
+        error = framework_errors.get(test_id, error)
         print(f"<h4>{safe_text(name)}</h4>")
         print(f"<pre>{safe_text(error)}</pre>")
         # Public run annotations remain readable when full job logs/summaries
