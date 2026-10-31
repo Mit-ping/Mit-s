@@ -198,6 +198,9 @@ void main() {
       ),
     ));
     await tester.pump();
+    // Stream providers first render loading; finish that initial gray-to-white
+    // transition before measuring the later connection animation.
+    await tester.pump(mitConnectionTransition);
     double visibleArtwork() => tester.widget<FadeTransition>(find.descendant(
       of: find.byKey(const ValueKey('mit-connected-artwork')), matching: find.byType(FadeTransition),
     )).opacity.value;
