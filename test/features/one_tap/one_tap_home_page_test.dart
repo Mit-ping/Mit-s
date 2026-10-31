@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fpdart/fpdart.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
+import 'package:hiddify/features/profile/data/profile_repository.dart';
+import 'package:hiddify/features/profile/model/profile_failure.dart';
 import 'package:hiddify/core/router/bottom_sheets/bottom_sheets_notifier.dart';
 import 'package:hiddify/core/router/dialog/dialog_notifier.dart';
 import 'package:hiddify/features/connection/model/connection_failure.dart';
@@ -10,6 +14,23 @@ import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
+import 'fixtures/awg_fixture.dart';
+
+class _Repository implements ProfileRepository {
+  String? imported;
+  UserOverride? savedOverride;
+  bool failValidation = false;
+  @override
+  TaskEither<ProfileFailure, Unit> addLocal(String content, {UserOverride? userOverride}) {
+    imported = content;
+    savedOverride = userOverride;
+    if (failValidation) throw const FormatException('private-native-error');
+    return TaskEither.right(unit);
+  }
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
 
 class _Active extends ActiveProfile {
   _Active(this.profile);
@@ -80,9 +101,41 @@ void main() {
     await tester.enterText(find.byType(TextField), 'https://example.com/private-subscription');
     await tester.tap(find.text('Добавить'));
     await tester.pumpAndSettle();
-    expect(find.text('Не удалось добавить профиль VLESS + REALITY. Проверьте ссылку.'), findsOneWidget);
+    expect(find.text('Нужна ссылка VLESS + REALITY или клиентский профиль AmneziaWG.'), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
+
+  for (final fails in [false, true]) {
+    testWidgets('vpn client import uses the repository without auto-connect, native failure=$fails', (tester) async {
+      final repository = _Repository()..failValidation = fails;
+      var connections = 0;
+      await tester.pumpWidget(ProviderScope(
+        overrides: [
+          activeProfileProvider.overrideWith(() => _Active(null)),
+          connectionNotifierProvider.overrideWith(() => _Core(const Disconnected(), () => connections++)),
+          profileRepositoryProvider.overrideWith((ref) async => repository),
+        ],
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(data: MediaQuery.of(context).copyWith(disableAnimations: true), child: child!),
+          home: const OneTapHomePage(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byKey(const ValueKey('add-reality-profile')));
+      await tester.tap(find.byKey(const ValueKey('add-reality-profile')));
+      await tester.pumpAndSettle();
+      final link = amneziaTestLink(amneziaTestContainer(awgTestConfig()));
+      await tester.enterText(find.byType(TextField), link);
+      await tester.tap(find.text('Добавить'));
+      await tester.pumpAndSettle();
+      expect(repository.imported, contains('"type":"awg"'));
+      expect(repository.imported, isNot(contains('private-display-name')));
+      expect(repository.savedOverride?.name, 'AmneziaWG');
+      expect(connections, 0);
+      expect(find.textContaining('private-native-error'), findsNothing);
+      expect(find.text(fails ? 'Не удалось добавить профиль. Проверьте ключ и совместимость конфигурации.' : 'Профиль добавлен'), findsOneWidget);
+    });
+  }
 
   testWidgets('neon power button starts real notifier action', (tester) async {
     var calls = 0;

@@ -8,7 +8,8 @@ import 'package:hiddify/features/connection/model/connection_status.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/one_tap/mit_connection_backdrop.dart';
 import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
-import 'package:hiddify/features/one_tap/reality_profile.dart';
+import 'package:hiddify/features/one_tap/mit_profile_import_dialog.dart';
+import 'package:hiddify/features/one_tap/vpn_profile.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/notifier/active_profile_notifier.dart';
@@ -23,6 +24,8 @@ class OneTapHomePage extends HookConsumerWidget {
     final status = ref.watch(connectionNotifierProvider);
     final busy = useState(false);
     final current = status.valueOrNull;
+    final protocolLabel = active.valueOrNull == null ? 'VLESS / AWG'
+        : mitProfileProtocolLabel(active.valueOrNull?.userOverride?.name);
     final canImport = !busy.value && current is Disconnected;
     final canStop = switch (current) {
       Connected() || Connecting() || Waiting() || NoAvailableProxies() || HotReloading() => true,
@@ -33,23 +36,26 @@ class OneTapHomePage extends HookConsumerWidget {
 
     Future<void> importProfile() async {
       if (busy.value || ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
-      final input = await showDialog<String>(context: context, builder: (_) => const _ProfileDialog());
+      final input = await showDialog<String>(context: context, builder: (_) => const MitProfileImportDialog());
       if (input == null || !context.mounted) return;
       if (ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
       busy.value = true;
       try {
-        final link = validateRealityProfile(input);
+        final prepared = prepareVpnProfile(input);
         final repo = await ref.read(profileRepositoryProvider.future);
-        final result = await repo.addLocal(link, userOverride: const UserOverride(name: 'VPN')).run();
-        if (result.isLeft()) throw const FormatException('Не удалось проверить профиль.');
+        if (ref.read(connectionNotifierProvider).valueOrNull is! Disconnected) return;
+        final result = await repo.addLocal(prepared.content, userOverride: UserOverride(name: prepared.protocol.profileName)).run();
+        if (result.isLeft()) throw StateError('profile validation failed');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Профиль добавлен')));
         }
-      } catch (_) {
+      } catch (error) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Не удалось добавить профиль VLESS + REALITY. Проверьте ссылку.')),
-          );
+          // Only our input validator can supply a safe, fixed error message.
+          final message = error is VpnProfileException
+              ? error.message
+              : 'Не удалось добавить профиль. Проверьте ключ и совместимость конфигурации.';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
         }
       } finally {
         if (context.mounted) busy.value = false;
@@ -161,12 +167,12 @@ class OneTapHomePage extends HookConsumerWidget {
                         trailing: const Icon(Icons.chevron_right_rounded, color: Color(0xFFADB9B0)),
                       )),
                       const SizedBox(height: 14),
-                      const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Expanded(child: _FeatureCard(icon: Icons.alt_route_rounded, title: 'Умный маршрут', caption: 'РФ напрямую')),
-                        SizedBox(width: 8),
-                        Expanded(child: _FeatureCard(icon: Icons.shield_outlined, title: 'Профиль VPN', caption: 'VLESS + REALITY')),
-                        SizedBox(width: 8),
-                        Expanded(child: _FeatureCard(icon: Icons.touch_app_outlined, title: 'Одна кнопка', caption: 'Ваш контроль')),
+                      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        const Expanded(child: _FeatureCard(icon: Icons.alt_route_rounded, title: 'Умный маршрут', caption: 'РФ напрямую')),
+                        const SizedBox(width: 8),
+                        Expanded(child: _FeatureCard(icon: Icons.shield_outlined, title: 'Профиль VPN', caption: protocolLabel)),
+                        const SizedBox(width: 8),
+                        const Expanded(child: _FeatureCard(icon: Icons.touch_app_outlined, title: 'Одна кнопка', caption: 'Ваш контроль')),
                       ]),
                       const SizedBox(height: 18),
                       OutlinedButton.icon(
@@ -227,27 +233,5 @@ class _FeatureCard extends StatelessWidget {
       const SizedBox(height: 4),
       Text(caption, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFADB9B0), fontSize: 10, height: 1.4)),
     ])),
-  );
-}
-
-class _ProfileDialog extends StatefulWidget {
-  const _ProfileDialog();
-  @override
-  State<_ProfileDialog> createState() => _ProfileDialogState();
-}
-
-class _ProfileDialogState extends State<_ProfileDialog> {
-  final controller = TextEditingController();
-  @override
-  void dispose() { controller.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: const Text('Профиль VPN'),
-    content: TextField(controller: controller, obscureText: true, autocorrect: false, enableSuggestions: false,
-      enableIMEPersonalizedLearning: false, decoration: const InputDecoration(labelText: 'Ссылка vless://')),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
-      TextButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Добавить')),
-    ],
   );
 }

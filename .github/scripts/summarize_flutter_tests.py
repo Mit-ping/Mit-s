@@ -86,8 +86,22 @@ def summarize_build(path):
     print(f'::error title=Android build::{escaped}', file=sys.stderr)
 
 
+def summarize_analysis(path):
+    if not path.exists():
+        return
+    lines = path.read_text(errors="replace").splitlines()
+    errors = [line for line in lines if re.search(r"\berror\s+[•-]", line)]
+    for line in (errors or lines[-8:])[:20]:
+        message = safe_text(line)
+        print(f'<pre>{message}</pre>')
+        escaped = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+        print(f'::error title=Flutter analysis::{escaped}', file=sys.stderr)
+
+
 if __name__ == "__main__":
-    if sys.argv[1:2] == ['--android-build']:
+    if sys.argv[1:2] == ['--flutter-analyze']:
+        summarize_analysis(Path(sys.argv[2]))
+    elif sys.argv[1:2] == ['--android-build']:
         summarize_build(Path(sys.argv[2]))
     else:
         for argument in sys.argv[1:]:

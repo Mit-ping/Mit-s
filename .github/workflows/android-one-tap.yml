@@ -24,6 +24,8 @@ jobs:
     # as used by Drift's SchemaVerifier. Keep strict migration checks enabled.
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    env:
+      MIT_REQUIRE_AWG_NATIVE_TESTS: 'true'
     steps:
       - uses: actions/checkout@v6
 
@@ -77,7 +79,12 @@ jobs:
         run: python3 .github/scripts/validate_ios_release_config.py
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        id: analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings 2>&1 | tee "$RUNNER_TEMP/flutter-analyze.log"
+
+      - name: Summarize analysis failure
+        if: always() && steps.analyze.outcome == 'failure'
+        run: python3 .github/scripts/summarize_flutter_tests.py --flutter-analyze "$RUNNER_TEMP/flutter-analyze.log" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Test pilot
         run: timeout --signal=TERM --kill-after=10s 5m flutter test test/features/one_tap --timeout 90s --machine > "$RUNNER_TEMP/one-tap-tests.jsonl"

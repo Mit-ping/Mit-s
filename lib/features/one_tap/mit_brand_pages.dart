@@ -7,6 +7,7 @@ import 'package:hiddify/features/common/general_pref_tiles.dart';
 import 'package:hiddify/features/connection/notifier/connection_notifier.dart';
 import 'package:hiddify/features/one_tap/mit_brand.dart';
 import 'package:hiddify/features/one_tap/mit_connection_controls.dart';
+import 'package:hiddify/features/one_tap/vpn_profile.dart';
 import 'package:hiddify/features/profile/model/profile_entity.dart';
 import 'package:hiddify/features/profile/overview/profiles_notifier.dart';
 import 'package:hiddify/utils/utils.dart';
@@ -24,9 +25,9 @@ class MitIntroPage extends HookConsumerWidget {
         const SizedBox(height: 24),
         const Text('Ваш VPN. Одна кнопка.', textAlign: TextAlign.center, style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700)),
         const SizedBox(height: 20),
-        const Text('Добавьте профиль VLESS + REALITY и подключитесь. Российские сайты и локальная сеть идут напрямую, остальной трафик — через VPN.', textAlign: TextAlign.center),
+        const Text('Добавьте профиль VLESS + REALITY или AmneziaWG и подключитесь. Российские сайты и локальная сеть идут напрямую, остальной трафик — через VPN.', textAlign: TextAlign.center),
         const SizedBox(height: 16),
-        const Text('Разрешение Android VPN запрашивается при первом подключении. Ссылка профиля вводится только на вашем устройстве.', textAlign: TextAlign.center),
+        const Text('Разрешение Android VPN запрашивается при первом подключении. Ключ профиля вводится только на вашем устройстве.', textAlign: TextAlign.center),
         const SizedBox(height: 24),
         FilledButton(onPressed: busy.value ? null : () async {
           busy.value = true;
@@ -76,7 +77,7 @@ class MitAboutPage extends StatelessWidget {
       const SizedBox(height: 8),
       const Text('Тестовая Android-версия', textAlign: TextAlign.center),
       const SizedBox(height: 24),
-      const Text('Подключение VLESS + REALITY и автоматическая маршрутизация. Прямые соединения с российскими ресурсами и локальной сетью не проходят через VPN.'),
+      const Text('Подключение VLESS + REALITY или AmneziaWG и автоматическая маршрутизация. Прямые соединения с российскими ресурсами и локальной сетью не проходят через VPN.'),
       const SizedBox(height: 16),
       const Text('Профили сохраняются в данных приложения. Диагностические логи могут содержать технические сведения; не передавайте их вместе с ключами или ссылками профилей.'),
       const SizedBox(height: 20),
@@ -130,7 +131,7 @@ class MitProfilesSheet extends HookConsumerWidget {
       if (!canEdit()) return;
       final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
         title: const Text('Удалить профиль?'),
-        content: const Text('Для повторного подключения понадобится снова добавить ссылку профиля.'),
+        content: const Text('Для повторного подключения понадобится снова добавить профиль.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Удалить')),
@@ -161,7 +162,7 @@ class MitProfilesSheet extends HookConsumerWidget {
               return ListTile(
                 leading: Icon(profile.active ? Icons.check_circle : Icons.circle_outlined, color: profile.active ? mitGreen : Colors.white54),
                 title: Text('Профиль ${index + 1}'),
-                subtitle: Text(profile.active ? 'Выбран' : 'Нажмите для выбора'),
+                subtitle: Text('${profile.active ? 'Выбран' : 'Нажмите для выбора'} · ${mitProfileProtocolLabel(profile.userOverride?.name)}'),
                 onTap: enabled ? () => select(profile) : null,
                 trailing: IconButton(tooltip: 'Удалить профиль', icon: const Icon(Icons.delete_outline), onPressed: enabled ? () => remove(profile) : null),
               );

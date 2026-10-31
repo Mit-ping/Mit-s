@@ -20,8 +20,10 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 ProfileEntity get _profile => ProfileEntity.local(id: 'synthetic', active: true, name: 'VPN', lastUpdate: DateTime(2026));
 class _Profile extends ActiveProfile {
+  _Profile({this.awg = false});
+  final bool awg;
   @override
-  Stream<ProfileEntity?> build() => Stream.value(_profile);
+  Stream<ProfileEntity?> build() => Stream.value(_profile.copyWith(userOverride: UserOverride(name: awg ? 'AmneziaWG' : 'VPN')));
 }
 class _Profiles extends ProfilesNotifier {
   @override
@@ -46,6 +48,7 @@ void main() {
   final cases = <String, (Widget, ConnectionStatus)>{
     'disconnected': (const OneTapHomePage(), const Disconnected()),
     'connected': (const OneTapHomePage(), const Connected()),
+    'connected-awg': (const OneTapHomePage(), const Connected()),
     'connecting': (const OneTapHomePage(), const Connecting()),
     'waiting': (const OneTapHomePage(), const Waiting()),
     'error': (const OneTapHomePage(), const Disconnected(ConnectionFailure.invalidConfig('synthetic-error'))),
@@ -61,7 +64,7 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
       final container = ProviderContainer(overrides: [
-        activeProfileProvider.overrideWith(_Profile.new),
+        activeProfileProvider.overrideWith(() => _Profile(awg: entry.key == 'connected-awg')),
         profilesNotifierProvider.overrideWith(_Profiles.new),
         connectionNotifierProvider.overrideWith(() => _Status(entry.value.$2)),
         localePreferencesProvider.overrideWith(_Locale.new),
