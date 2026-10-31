@@ -75,6 +75,11 @@ jobs:
       - name: Prepare native libraries for Linux tests and Android
         run: make linux-amd64-libs android-libs SHELL=/bin/bash '.SHELLFLAGS=-euo pipefail -c'
 
+      - name: Stage native core at the Flutter test FFI path
+        run: |
+          test -s hiddify-core/bin/lib/hiddify-core.so
+          cp hiddify-core/bin/lib/hiddify-core.so hiddify-core/hiddify-core.so
+
       - name: Check iOS configuration remains consistent
         run: python3 .github/scripts/validate_ios_release_config.py
 
