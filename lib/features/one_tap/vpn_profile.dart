@@ -218,13 +218,14 @@ String decodeVpnProfileBytes(List<int> bytes) {
     final expected = ByteData.sublistView(Uint8List.fromList(bytes), 0, 4).getUint32(0);
     if (expected > 0 && expected <= maxVpnProfileBytes) return 'vpn://${base64Url.encode(bytes)}';
   }
-  String? text;
-  try { text = utf8.decode(bytes).trim(); } on FormatException { /* Qt binary export. */ }
-  if (text != null) {
+  String? original;
+  try { original = utf8.decode(bytes); } on FormatException { /* Qt binary export. */ }
+  if (original != null) {
+    final text = original.trim();
     if (text.startsWith('{')) return 'vpn://${base64Url.encode(utf8.encode(text))}';
     final payload = _sharePayload(text);
     if (RegExp(r'^[A-Za-z0-9+/_-]+={0,2}$').hasMatch(payload)) return 'vpn://$payload';
-    return text;
+    return original;
   }
   if (bytes.length < 6 || bytes[4] != 0x78) throw _share;
   return 'vpn://${base64Url.encode(bytes)}';
