@@ -37,7 +37,7 @@ jobs:
           dart run slang
           make android-libs SHELL=/bin/bash '.SHELLFLAGS=-euo pipefail -c'
       - name: Build installable debug APK
-       run: |
+        run: |
           flutter build apk --debug --dart-define=ONE_TAP_VPN=true --build-name=1.5.0-beta --build-number=50005
           python3 .github/scripts/check_mit_branding.py build/app/outputs/flutter-apk/app-debug.apk
           mkdir -p apk
