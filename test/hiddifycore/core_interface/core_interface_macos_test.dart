@@ -172,7 +172,8 @@ void main() {
         core!.snapshotConfiguration(profile.path),
         throwsA(
           isA<FileSystemException>().having(
-            (error) => error.path,
+            // Windows accepts both separators in paths read from profiles.
+            (error) => p.normalize(error.path!),
             'path',
             p.join(workingDirectory.path, 'certs', 'ca.pem'),
           ),

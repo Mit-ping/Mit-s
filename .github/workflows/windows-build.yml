@@ -40,7 +40,15 @@ jobs:
           choco install make innosetup --yes --no-progress
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Restore Dart package cache
+        id: pub-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: windows-beta-dart-3.10.4-${{ hashFiles('pubspec.lock') }}
+
       - name: Install Dart dependencies
+        id: dependencies
         run: |
           set -euo pipefail
           flutter config --no-analytics --enable-windows-desktop
@@ -112,3 +120,10 @@ jobs:
           path: out/*
           if-no-files-found: error
           retention-days: 14
+
+      - name: Save verified Dart dependencies
+        if: ${{ always() && steps.dependencies.outcome == 'success' && steps.pub-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.PUB_CACHE }}
+          key: windows-beta-dart-3.10.4-${{ hashFiles('pubspec.lock') }}
