@@ -1,0 +1,7 @@
+{
+  "source_repository": "https://github.com/hiddify/hiddify-core",
+  "original_asset_id": 706285436,
+  "original_asset_name": "hiddify-lib-windows-amd64.tar.gz",
+  "sha256": "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff",
+  "note": "Previously verified upstream asset, vendored after upstream removed the temporary release asset. Native filenames and licence attribution are retained."
+}

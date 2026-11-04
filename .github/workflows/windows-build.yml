@@ -61,16 +61,12 @@ jobs:
           set -euo pipefail
           make gen translate
 
-      - name: Download compatible Windows VPN core
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Prepare verified Windows VPN core
         run: |
           set -euo pipefail
           # v4.1.0 lacks HiddifyAdmin.exe, required by windows/CMakeLists.txt.
-          # Pin the compatible upstream asset by ID and SHA256, not the moving draft tag.
-          archive="$(cygpath -u "$RUNNER_TEMP")/windows-vpn-core.tar.gz"
-          gh api --method GET -H 'Accept: application/octet-stream' \
-            repos/hiddify/hiddify-core/releases/assets/706285436 > "$archive"
+          # The original temporary asset was removed upstream; use the verified vendored archive.
+          archive="$PWD/vendor/windows/vpn-core.tar.gz"
           echo "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff  $archive" | sha256sum --check -
           mkdir -p hiddify-core/bin
           tar -xzf "$archive" -C hiddify-core/bin
