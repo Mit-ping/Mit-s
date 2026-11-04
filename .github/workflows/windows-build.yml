@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           # v4.1.0 lacks HiddifyAdmin.exe, required by windows/CMakeLists.txt.
           # Pin the compatible upstream asset by ID and SHA256, not the moving draft tag.
-          archive="$RUNNER_TEMP/windows-vpn-core.tar.gz"
+          archive="$(cygpath -u "$RUNNER_TEMP")/windows-vpn-core.tar.gz"
           gh api --method GET -H 'Accept: application/octet-stream' \
             repos/hiddify/hiddify-core/releases/assets/706285436 > "$archive"
           echo "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff  $archive" | sha256sum --check -
@@ -101,6 +101,10 @@ jobs:
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
           } | Set-Content out/SHA256SUMS.txt -Encoding ascii
+
+      - name: Verify portable application starts
+        shell: pwsh
+        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/VPN-1.5.0-beta.1-Windows-x64-Portable.zip
 
       - uses: actions/upload-artifact@v6
         with:
