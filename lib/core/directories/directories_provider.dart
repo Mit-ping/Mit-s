@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:hiddify/core/model/directories.dart';
+import 'package:hiddify/core/directories/mit_data_migration.dart';
 import 'package:hiddify/core/model/environment.dart';
 import 'package:hiddify/utils/custom_loggers.dart';
 import 'package:hiddify/utils/platform_utils.dart';
@@ -36,7 +37,7 @@ class AppDirectories extends _$AppDirectories with InfraLogger {
       final portableDir = getPortableDirectory();
       dirs = (baseDir: portableDir, workingDir: portableDir, tempDir: await getTemporaryDirectory());
     } else {
-      final baseDir = await getApplicationSupportDirectory();
+      final baseDir = await _getSupportDirectory();
       final workingDir = Platform.isAndroid ? await _getAndroidWorkingDirectory() : baseDir;
       final tempDir = await getTemporaryDirectory();
       dirs = (baseDir: baseDir, workingDir: workingDir, tempDir: tempDir);
@@ -75,14 +76,45 @@ class AppDirectories extends _$AppDirectories with InfraLogger {
       final portableDir = getPortableDirectory();
       return portableDir;
     } else if (PlatformUtils.isWindows || PlatformUtils.isLinux) {
-      return await getApplicationSupportDirectory();
+      return await _getSupportDirectory();
     }
     return await getApplicationDocumentsDirectory();
   }
 
+  static Future<Directory>? _windowsSupport;
+  static Future<Directory> _getSupportDirectory() async {
+    if (!Platform.isWindows) return getApplicationSupportDirectory();
+    return _windowsSupport ??= _migrateSupportDirectory();
+  }
+
+  static Future<Directory> _migrateSupportDirectory() async {
+    final destination = await getApplicationSupportDirectory();
+    final roaming = Platform.environment['APPDATA'];
+    if (roaming == null) return destination;
+    final legacy = Directory(p.join(roaming, 'Hiddify', 'hiddify'));
+    if (await legacy.exists() && (!await destination.exists() || await destination.list().isEmpty)) {
+      final processes = await Process.run('tasklist.exe', ['/FI', 'IMAGENAME eq Hiddify.exe', '/FO', 'CSV', '/NH']);
+      if (processes.exitCode != 0 || processes.stdout.toString().toLowerCase().contains('"hiddify.exe"')) {
+        throw StateError('Close the previous VPN application before migrating profiles.');
+      }
+      await migrateMitWindowsData(legacy, destination);
+    }
+    return destination;
+  }
+
   static Directory getPortableDirectory() {
     final exeDir = File(Platform.resolvedExecutable).parent;
-    return Directory(p.join(exeDir.path, 'hiddify_portable_data'));
+    final directory = Directory(p.join(exeDir.path, 'mits_vpn_data'));
+    final legacy = Directory(p.join(exeDir.path, 'hiddify_portable_data'));
+    if (!directory.existsSync() && legacy.existsSync()) {
+      try {
+        return legacy.renameSync(directory.path);
+      } on FileSystemException {
+        // Keep existing data accessible if Windows still holds a file open.
+        return legacy;
+      }
+    }
+    return directory;
   }
 
   static Future<bool> checkDirectoryAccess(Directory dir) async {

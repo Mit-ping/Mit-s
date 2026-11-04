@@ -33,9 +33,9 @@ param(
 
     [string[]]$Path = @('dist'),
 
-    [string]$Description = 'Hiddify',
+    [string]$Description = "Mit's VPN",
 
-    [string]$DescriptionUrl = 'https://hiddify.com',
+    [string]$DescriptionUrl = 'https://github.com/Mit-ping/Mit-s',
 
     # RFC 3161 timestamp server. Default depends on the backend.
     [string]$TimestampUrl = ''

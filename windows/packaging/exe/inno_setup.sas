@@ -28,12 +28,12 @@ VersionInfoProductName={{DISPLAY_NAME}}
 VersionInfoTextVersion={{APP_VERSION}}
 VersionInfoCopyright=Copyright (C) {{PUBLISHER_NAME}}
 AppCopyright=Copyright (C) {{PUBLISHER_NAME}}
-; CI (windows/scripts/configure_windows_signing.ps1) registers the "hiddifysign"
-; Sign Tool and sets HIDDIFY_INNO_SIGNTOOL, so the compiler signs Setup.exe *and*
+; CI (windows/scripts/configure_windows_signing.ps1) registers the "mitsvpnsign"
+; Sign Tool and sets MITS_VPN_INNO_SIGNTOOL, so the compiler signs Setup.exe *and*
 ; unins000.exe. An unsigned uninstaller dropped into Program Files is one of the
 ; VirusTotal sandbox hits ("Sysmon File Executable Creation" Sigma rule).
-#if GetEnv("HIDDIFY_INNO_SIGNTOOL") == "hiddifysign"
-SignTool=hiddifysign
+#if GetEnv("MITS_VPN_INNO_SIGNTOOL") == "mitsvpnsign"
+SignTool=mitsvpnsign
 SignedUninstaller=yes
 #endif
 
@@ -80,8 +80,6 @@ Name: "{userstartup}\\{{DISPLAY_NAME}}"; Filename: "{app}\\{{EXECUTABLE_NAME}}";
 [Run]
 Filename: "{app}\\{{EXECUTABLE_NAME}}"; Description: "{cm:LaunchProgram,{{DISPLAY_NAME}}}"; Flags: {% if PRIVILEGES_REQUIRED == 'admin' %}runascurrentuser{% endif %} nowait postinstall skipifsilent
 
-[UninstallDelete]
-Type: filesandordirs; Name: "{userappdata}\Hiddify"
 
 [Code]
 // Stop/remove services via the Service Control Manager API.

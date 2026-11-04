@@ -65,7 +65,7 @@ class CircleDesignWidget extends StatelessWidget {
                       return CustomPaint(
                         painter: CirclePainter(animationValue: animationValue, baseColor: value!),
                       );
-                      // return Assets.images.logo.svg(
+                      // return Image.asset('assets/images/mit_vpn_icon.png',
                       //   colorFilter: ColorFilter.mode(
                       //     value!,
                       //     BlendMode.srcIn,

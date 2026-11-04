@@ -1,3 +1,8 @@
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
+import 'package:hiddify/features/one_tap/mit_resilience.dart';
+import 'package:hiddify/features/profile/data/profile_data_providers.dart';
+import 'dart:async';
+import 'package:meta/meta.dart';
 import 'dart:io';
 
 import 'package:hiddify/core/haptic/haptic_service.dart';
@@ -26,6 +31,13 @@ part 'connection_notifier.g.dart';
 class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   @override
   Stream<ConnectionStatus> build() async* {
+    if (supportsAutomaticRecovery) {
+      ref.listen(MitResiliencePreferences.autoRecovery, (_, enabled) {
+        if (!enabled) _stopRecovery();
+      });
+      final timer = Timer.periodic(const Duration(seconds: 5), (_) => _pollRecovery());
+      ref.onDispose(() { timer.cancel(); _recovery.cancel(); _connectEpoch++; _singleStart.reset(); });
+    }
     if (Platform.isIOS) {
       await _connectionRepo.setup().mapLeft((l) {
         loggy.error("error setting up connection repository", l);
@@ -36,7 +48,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       if (previous == next) return;
       if (previous case AsyncData(:final value) when !value.isConnected) {
         if (next case AsyncData(value: final Connected _)) {
-          if (Platform.isAndroid && !ref.read(Preferences.storeReviewedByUser)) {
+          if (Platform.isAndroid && !oneTapVpnEnabled && !ref.read(Preferences.storeReviewedByUser)) {
             if (await InAppReview.instance.isAvailable()) {
               InAppReview.instance.requestReview();
               ref.read(Preferences.storeReviewedByUser.notifier).update(true);
@@ -48,6 +60,10 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
 
     ref.listen(activeProfileProvider.select((value) => value.asData?.value), (previous, next) async {
       if (previous == null) return;
+      if (supportsAutomaticRecovery && next?.id == _automaticProfileId && _automaticProfileId != null) {
+        _automaticProfileId = null;
+        return;
+      }
       final shouldReconnect = next == null || previous.id != next.id;
       if (shouldReconnect) {
         await reconnect(next);
@@ -74,6 +90,102 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   ConnectionRepository get _connectionRepo => ref.read(connectionRepositoryProvider);
+
+  @visibleForTesting
+  bool get supportsAutomaticRecovery => oneTapVpnEnabled;
+  @visibleForTesting
+  DateTime get recoveryTime => DateTime.now();
+  @visibleForTesting
+  Future<void> pollRecoveryForTesting() => _pollRecovery();
+
+  final _recovery = MitRecoveryPlan();
+  bool _pollingRecovery = false;
+  String? _automaticProfileId;
+
+  void _stopRecovery({String phase = 'idle'}) {
+    if (!supportsAutomaticRecovery) return;
+    _recovery.cancel();
+    ref.read(mitRecoveryViewProvider.notifier).state = MitRecoveryView(phase: phase, attempt: _recovery.attempts);
+  }
+
+  Future<void> _armRecovery() async {
+    if (!supportsAutomaticRecovery || !ref.read(MitResiliencePreferences.autoRecovery)) return;
+    final epoch = _connectEpoch;
+    try {
+      final env = await ref.read(mitVpnPlatformProvider).environment();
+      if (epoch != _connectEpoch) return;
+      _recovery.start(env.stopEpoch);
+    } catch (_) { if (epoch == _connectEpoch) _stopRecovery(phase: 'blocked'); }
+  }
+
+  Future<void> _pollRecovery() async {
+    if (_pollingRecovery || !_recovery.armed) return;
+    _pollingRecovery = true;
+    final generation = _recovery.generation;
+    try {
+      if (!ref.read(MitResiliencePreferences.autoRecovery)) { _stopRecovery(); return; }
+      final env = await ref.read(mitVpnPlatformProvider).environment();
+      if (!_recovery.armed || generation != _recovery.generation) return;
+      final current = state.valueOrNull ?? (state.hasError ? const Disconnected(UnexpectedConnectionFailure()) : null);
+      if (current == null) return;
+      if (env.stopEpoch != _recovery.stopEpoch) { _stopRecovery(); return; }
+      // The first permission dialog belongs to the manual start; never retry it.
+      if (current is Connecting && !env.permissionGranted) return;
+      if (current is Disconnected && current.connectionFailure != null &&
+          current.connectionFailure is! UnexpectedConnectionFailure &&
+          current.connectionFailure is! BackgroundCoreNotAvailable) {
+        _stopRecovery(phase: 'blocked'); return;
+      }
+      final profile = await ref.read(activeProfileProvider.future);
+      if (!_recovery.armed || generation != _recovery.generation) return;
+      if (profile == null) { _stopRecovery(); return; }
+      if (_singleStart.isRunning && current is! Connected) return;
+      final target = _recovery.next(now: recoveryTime, status: current, environment: env,
+        currentProfile: profile.id, backups: ref.read(MitResiliencePreferences.backupProfiles));
+      ref.read(mitRecoveryViewProvider.notifier).state = MitRecoveryView(
+        active: _recovery.armed && (current is! Connected || !env.networkAvailable),
+        attempt: _recovery.attempts,
+        phase: !_recovery.armed ? (_recovery.attempts >= 6 ? 'exhausted' : 'blocked')
+          : !env.networkAvailable ? 'network' : current is Connected ? 'connected' : 'retry',
+      );
+      if (target == null || _singleStart.isRunning) return;
+      var selected = profile;
+      if (target != profile.id) {
+        final repo = await ref.read(profileRepositoryProvider.future);
+        final result = await repo.getById(target).run();
+        if (!_recovery.armed || generation != _recovery.generation) return;
+        final backup = result.getOrElse((_) => null);
+        if (backup == null || backup is! LocalProfileEntity) return;
+        // Stop before changing profiles. No fallback may start a parallel tunnel.
+        _connectEpoch++;
+        final stopped = await _connectionRepo.disconnect().run();
+        if (stopped.isLeft()) { _stopRecovery(phase: 'blocked'); return; }
+        if (!_recovery.armed || generation != _recovery.generation) return;
+        _automaticProfileId = backup.id;
+        final changed = await repo.setAsActive(backup.id).run();
+        if (changed.isLeft()) _automaticProfileId = null;
+        if (changed.isLeft() || !_recovery.armed || generation != _recovery.generation) return;
+        selected = backup;
+      } else if (current is! Disconnected) {
+        _connectEpoch++;
+        final stopped = await _connectionRepo.disconnect().run();
+        if (stopped.isLeft()) { _stopRecovery(phase: 'blocked'); return; }
+      }
+      if (!_recovery.armed || generation != _recovery.generation) return;
+      final beforeStart = await ref.read(mitVpnPlatformProvider).environment();
+      if (!_recovery.armed || generation != _recovery.generation) return;
+      if (beforeStart.stopEpoch != _recovery.stopEpoch || !beforeStart.permissionGranted) {
+        _stopRecovery(phase: 'blocked'); return;
+      }
+      await _connect(profile: selected, automatic: true);
+    } catch (_) {
+      // Never put profile or platform exception text into recovery UI/report.
+      if (_recovery.armed && generation == _recovery.generation) {
+        ref.read(mitRecoveryViewProvider.notifier).state = MitRecoveryView(
+          active: true, phase: 'retry', attempt: _recovery.attempts);
+      }
+    } finally { _pollingRecovery = false; }
+  }
 
   Future<void> mayConnect() async {
     if (state case AsyncData(:final value)) {
@@ -109,19 +221,25 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   }
 
   Future<void> toggleConnection() async {
+    if (supportsAutomaticRecovery && _recovery.armed && state.valueOrNull is Disconnected) {
+      _stopRecovery();
+      await ref.read(Preferences.startedByUser.notifier).update(false);
+      await _disconnect();
+      return;
+    }
     final haptic = ref.read(hapticServiceProvider.notifier);
     if (state case AsyncError()) {
       await haptic.lightImpact();
-      await _connect();
+      await _startByUser();
     } else if (state case AsyncData(:final value)) {
       switch (value) {
         case Disconnected():
           await haptic.lightImpact();
-          await ref.read(Preferences.startedByUser.notifier).update(true);
-          await _connect();
+          await _startByUser();
         // the core cancels a start or a hot reload that a stop comes after, so a stop is always
         // allowed, however early
         case Connected() || Waiting() || NoAvailableProxies() || Connecting() || HotReloading():
+          _stopRecovery();
           await haptic.mediumImpact();
           await ref.read(Preferences.startedByUser.notifier).update(false);
           await _disconnect();
@@ -131,7 +249,19 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     }
   }
 
+  Future<void> _startByUser() async {
+    if (!(state.hasError || state.valueOrNull is Disconnected)) return;
+    final epoch = _connectEpoch;
+    state = const AsyncData(Connecting());
+    await _armRecovery();
+    if (epoch != _connectEpoch) return;
+    await ref.read(Preferences.startedByUser.notifier).update(true);
+    if (epoch != _connectEpoch) return;
+    await _connect();
+  }
+
   Future<void> reconnect(ProfileEntity? profile) async {
+    if (supportsAutomaticRecovery) _stopRecovery();
     if (state case AsyncData(:final value) when value.isRunning) {
       if (profile == null) {
         loggy.info("no active profile, disconnecting");
@@ -144,12 +274,13 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
         state = AsyncError(err, StackTrace.current);
         await ref
             .read(dialogNotifierProvider.notifier)
-            .showCustomAlertFromErr(err.present(ref.read(translationsProvider).requireValue));
+            .showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Не удалось выполнить действие. Проверьте разрешение на подключение VPN.') : err.present(ref.read(translationsProvider).requireValue));
       }).run();
     }
   }
 
   Future<void> abortConnection() async {
+    _stopRecovery();
     if (state case AsyncData(:final value)) {
       switch (value) {
         case Connected() || Waiting() || NoAvailableProxies() || Connecting() || HotReloading():
@@ -165,7 +296,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
   /// Bumped on disconnect / stuck-retry so a superseded in-flight connect cannot overwrite UI.
   int _connectEpoch = 0;
 
-  Future<void> _connect() async {
+  Future<void> _connect({ProfileEntity? profile, bool automatic = false}) async {
     // UI can show Disconnected while a native start is still blocked on the macOS
     // serial queue. Stacking another start made that worse; cancel once, then retry.
     if (_singleStart.isRunning && (state.valueOrNull is Disconnected || _singleStart.isStale)) {
@@ -179,7 +310,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
 
     final epoch = _connectEpoch;
     final ignored = await _singleStart.run(() async {
-      await _connectThrottled(epoch);
+      await _connectThrottled(epoch, profile: profile, automatic: automatic);
       return false;
     }, onIgnored: true);
     if (ignored) {
@@ -187,10 +318,12 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     }
   }
 
-  Future<void> _connectThrottled(int epoch) async {
-    final activeProfile = await ref.read(activeProfileProvider.future);
+  Future<void> _connectThrottled(int epoch, {ProfileEntity? profile, bool automatic = false}) async {
+    final activeProfile = profile ?? await ref.read(activeProfileProvider.future);
     if (activeProfile == null) {
       loggy.info("no active profile, not connecting");
+      if (epoch == _connectEpoch) state = const AsyncData(Disconnected());
+      _stopRecovery();
       return;
     }
     if (epoch != _connectEpoch) return;
@@ -210,12 +343,15 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       // Prefer Disconnected(failure) over AsyncError so the button shows failed + details,
       // and a late bare Disconnected from the status stream is less likely to erase it.
       state = AsyncData(Disconnected(err));
-      await dialogs.showCustomAlertFromErr(err.present(t));
+      if (supportsAutomaticRecovery && _recovery.armed) {
+        ref.read(mitRecoveryViewProvider.notifier).state = MitRecoveryView(active: true, phase: 'retry', attempt: _recovery.attempts);
+      }
+      if (!automatic) await dialogs.showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Проверьте сеть, профиль и разрешение Android VPN.') : err.present(t));
       loggy.warning(err);
-      if (err.toString().contains("panic")) {
+      if (!oneTapVpnEnabled && err.toString().contains("panic")) {
         await Sentry.captureException(Exception(err.toString()));
       }
-      await startedByUser.update(false);
+      if (!supportsAutomaticRecovery || !_recovery.armed) await startedByUser.update(false);
     }).run();
   }
 
@@ -231,7 +367,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       loggy.warning("error disconnecting", err);
       ref
           .read(dialogNotifierProvider.notifier)
-          .showCustomAlertFromErr(err.present(ref.read(translationsProvider).requireValue));
+          .showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Не удалось выполнить действие. Проверьте разрешение на подключение VPN.') : err.present(ref.read(translationsProvider).requireValue));
       state = AsyncError(err, StackTrace.current);
     }).run();
   }
@@ -246,6 +382,7 @@ bool serviceRunning(Ref ref) {
 class SingleCall {
   bool _running = false;
   DateTime? _started;
+  int _generation = 0;
 
   bool get isRunning => _running;
 
@@ -253,6 +390,7 @@ class SingleCall {
       _running && _started != null && DateTime.now().difference(_started!) > const Duration(seconds: 25);
 
   void reset() {
+    _generation++;
     _running = false;
     _started = null;
   }
@@ -261,12 +399,15 @@ class SingleCall {
     if (_running) return onIgnored;
 
     _running = true;
+    final generation = ++_generation;
     _started = DateTime.now();
     try {
       return await task();
     } finally {
-      _running = false;
-      _started = null;
+      if (generation == _generation) {
+        _running = false;
+        _started = null;
+      }
     }
   }
 }

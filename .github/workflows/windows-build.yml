@@ -1,4 +1,4 @@
-name: Windows beta build (artifacts only)
+name: Mit's VPN Windows beta (artifacts only)
 
 on:
   workflow_dispatch:
@@ -77,8 +77,12 @@ jobs:
           for file in hiddify-core.dll libcronet.dll HiddifyCli.exe HiddifyAdmin.exe; do
             test -s "hiddify-core/bin/$file"
           done
+          cp hiddify-core/bin/* hiddify-core/
+          echo "$(cygpath -m "$PWD/hiddify-core")" >> "$GITHUB_PATH"
 
       - name: Analyze and test
+        env:
+          MIT_REQUIRE_AWG_NATIVE_TESTS: 'true'
         run: |
           set -euo pipefail
           flutter analyze --no-fatal-infos --no-fatal-warnings
@@ -96,8 +100,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path out -Force | Out-Null
           $targets = @{
-            '.exe' = 'VPN-1.5.0-beta.1-Windows-x64-Setup.exe'
-            '.zip' = 'VPN-1.5.0-beta.1-Windows-x64-Portable.zip'
+            '.exe' = 'MitsVPN-1.5.0-beta.2-Windows-x64-Setup.exe'
+            '.zip' = 'MitsVPN-1.5.0-beta.2-Windows-x64-Portable.zip'
           }
           foreach ($extension in $targets.Keys) {
             $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -eq $extension })
@@ -105,6 +109,13 @@ jobs:
             if ($files[0].Length -eq 0) { throw "Empty package: $($files[0].FullName)" }
             Copy-Item $files[0].FullName (Join-Path out $targets[$extension])
           }
+          $setup = Get-Item out/MitsVPN-1.5.0-beta.2-Windows-x64-Setup.exe
+          @{
+            schema = 1; app_id = 'com.mitsvpn.app'; platform = 'windows'; architecture = 'x64'
+            version = '1.5.0-beta.2'; build_number = 10501
+            setup_filename = $setup.Name; setup_size = $setup.Length
+            setup_sha256 = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          } | ConvertTo-Json | Set-Content out/mits-vpn-windows-update.json -Encoding utf8
           Get-ChildItem out -File | Sort-Object Name | ForEach-Object {
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)"
@@ -112,11 +123,11 @@ jobs:
 
       - name: Verify portable application starts
         shell: pwsh
-        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/VPN-1.5.0-beta.1-Windows-x64-Portable.zip
+        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/MitsVPN-1.5.0-beta.2-Windows-x64-Portable.zip -Screenshot out/MitsVPN-Windows-preview.png
 
       - uses: actions/upload-artifact@v6
         with:
-          name: VPN-1.5.0-beta.1-Windows-x64
+          name: MitsVPN-1.5.0-beta.2-Windows-x64
           path: out/*
           if-no-files-found: error
           retention-days: 14

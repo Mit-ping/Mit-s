@@ -3,15 +3,15 @@ import 'package:flutter/services.dart';
 import 'package:hiddify/utils/utils.dart';
 
 abstract class Constants {
-  static const appName = "Hiddify";
-  static const githubUrl = "https://github.com/hiddify/hiddify-next";
-  static const licenseUrl = "https://github.com/hiddify/hiddify-next?tab=License-1-ov-file#readme";
-  static const githubReleasesApiUrl = "https://api.github.com/repos/hiddify/hiddify-next/releases";
-  static const githubLatestReleaseUrl = "https://github.com/hiddify/hiddify-app/releases/latest";
-  static const appCastUrl = "https://raw.githubusercontent.com/hiddify/hiddify-next/main/appcast.xml";
-  static const telegramChannelUrl = "https://t.me/hiddify";
-  static const privacyPolicyUrl = "https://hiddify.com/privacy-policy/";
-  static const termsAndConditionsUrl = "https://hiddify.com/terms/";
+  static const appName = "Mit's VPN";
+  static const githubUrl = "https://github.com/Mit-ping/Mit-s";
+  static const licenseUrl = "https://github.com/Mit-ping/Mit-s/blob/main/LICENSE.md";
+  static const githubReleasesApiUrl = "https://api.github.com/repos/Mit-ping/Mit-s/releases";
+  static const githubLatestReleaseUrl = "https://github.com/Mit-ping/Mit-s/releases";
+  static const appCastUrl = "https://raw.githubusercontent.com/Mit-ping/Mit-s/main/appcast.xml";
+  static const telegramChannelUrl = "https://github.com/Mit-ping/Mit-s/issues";
+  static const privacyPolicyUrl = "https://github.com/Mit-ping/Mit-s/blob/build/windows-1.5-beta/docs/PRIVACY.md";
+  static const termsAndConditionsUrl = "https://github.com/Mit-ping/Mit-s/blob/build/windows-1.5-beta/LICENSE.md";
   static const cfWarpPrivacyPolicy = "https://www.cloudflare.com/application/privacypolicy/";
   static const cfWarpTermsOfService = "https://www.cloudflare.com/application/terms/";
 }

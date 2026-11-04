@@ -27,6 +27,8 @@ class FlutterWindow : public Win32Window {
 
  private:
   void RegisterDesktopStatusChannel();
+  void RegisterMitPlatformChannel();
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> mit_platform_channel_;
   // status: "none" | "ok" | "error"
   void SetTaskbarStatusOverlay(const std::string& status);
 

@@ -1,3 +1,5 @@
+import 'package:hiddify/features/one_tap/mit_brand.dart';
+import 'package:hiddify/features/one_tap/one_tap_policy.dart';
 import 'package:accessibility_tools/accessibility_tools.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/foundation.dart';
@@ -55,7 +57,7 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
     final locale = ref.watch(localePreferencesProvider);
     final themeMode = ref.watch(themePreferencesProvider);
     final theme = AppTheme(themeMode, locale.preferredFontFamily);
-    final upgrader = ref.watch(upgraderProvider);
+    final upgrader = oneTapVpnEnabled ? null : ref.watch(upgraderProvider);
     final activeBreakpoint = Breakpoint(context).activeBreakpoint;
 
     ref.listen(foregroundProfilesUpdateNotifierProvider, (_, _) {});
@@ -81,14 +83,14 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
                 supportedLocales: AppLocaleUtils.supportedLocales,
                 localizationsDelegates: GlobalMaterialLocalizations.delegates,
                 debugShowCheckedModeBanner: false,
-                themeMode: themeMode.flutterThemeMode,
-                theme: theme.lightTheme(lightColorScheme),
-                darkTheme: theme.darkTheme(darkColorScheme),
-                title: Constants.appName,
+                themeMode: oneTapVpnEnabled ? ThemeMode.dark : themeMode.flutterThemeMode,
+                theme: oneTapVpnEnabled ? mitTheme(base: theme.darkTheme(darkColorScheme)) : theme.lightTheme(lightColorScheme),
+                darkTheme: oneTapVpnEnabled ? mitTheme(base: theme.darkTheme(darkColorScheme)) : theme.darkTheme(darkColorScheme),
+                title: oneTapVpnEnabled ? MitBrand.name : Constants.appName,
                 builder: (context, child) {
                   final theme = Theme.of(context);
                   child = SnackBarHost(
-                    child: UpgradeAlert(
+                    child: oneTapVpnEnabled ? (child ?? const SizedBox()) : UpgradeAlert(
                       upgrader: upgrader,
                       navigatorKey: router.routerDelegate.navigatorKey,
                       child: child ?? const SizedBox(),
@@ -124,7 +126,7 @@ class App extends HookConsumerWidget with WidgetsBindingObserver, PresLogger {
   //   final locale = ref.watch(localePreferencesProvider);
   //   final themeMode = ref.watch(themePreferencesProvider);
   //   final theme = AppTheme(themeMode, locale.preferredFontFamily);
-  //   final upgrader = ref.watch(upgraderProvider);
+  //   final upgrader = oneTapVpnEnabled ? null : ref.watch(upgraderProvider);
 
   //   ref.listen(foregroundProfilesUpdateNotifierProvider, (_, __) {});
 

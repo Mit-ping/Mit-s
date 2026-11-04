@@ -1,6 +1,6 @@
 {
   "common": {
-    "appTitle": "Hiddify",
+    "appTitle": "Mit's VPN",
     "start": "Comenzar",
     "version": "Versión",
     "ok": "Aceptar",
@@ -98,7 +98,7 @@
   "intro": {
     "banner": "Todo lo que necesitas para un internet sin restricciones",
     "termsAndPolicyCaution(rich)": "Al continuar, aceptas los ${tap(@:pages.about.termsAndConditions)}",
-    "info(rich)": "Hecho con ❤️ por Hiddify. ${tap_source(Código abierto)} y ${tap_license(Licencia)}"
+    "info(rich)": "Hecho con ❤️ por Mit's VPN. ${tap_source(Código abierto)} y ${tap_license(Licencia)}"
   },
   "pages": {
     "home": {

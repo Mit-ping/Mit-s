@@ -1,6 +1,6 @@
 {
   "common": {
-    "appTitle": "Hiddify",
+    "appTitle": "Mit's VPN",
     "start": "Start",
     "version": "Version",
     "ok": "OK",
@@ -98,7 +98,7 @@
   "intro": {
     "banner": "All you need for an unrestricted internet",
     "termsAndPolicyCaution(rich)": "By continuing you agree to ${tap(@:pages.about.termsAndConditions)}",
-    "info(rich)": "Made with ❤️ by Hiddify. ${tap_source(Open source)} and ${tap_license(License)}"
+    "info(rich)": "Made with ❤️ by Mit's VPN. ${tap_source(Open source)} and ${tap_license(License)}"
   },
   "pages": {
     "home": {
@@ -688,7 +688,7 @@
     "adminBgService": {
       "vpnNeedsAdmin": {
         "title": "Administrator permission needed",
-        "msg": "VPN mode needs a one-time administrator permission to install the Hiddify background service. After that, you can connect without another prompt.",
+        "msg": "VPN mode needs a one-time administrator permission to install the Mit's VPN background service. After that, you can connect without another prompt.",
         "connectWithAdmin": "Connect with admin permission",
         "waitingTitle": "Waiting for administrator permission",
         "waitingMsg": "Allow the administrator prompt to continue. You can stop and try again later.",

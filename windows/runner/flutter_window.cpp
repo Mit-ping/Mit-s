@@ -8,6 +8,9 @@
 #include <optional>
 #include <string>
 #include <shobjidl.h>
+#include <netlistmgr.h>
+#include <shellapi.h>
+#include <winsvc.h>
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -96,6 +99,7 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
   RegisterDesktopStatusChannel();
+  RegisterMitPlatformChannel();
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
     // this->Show(); window_manager hidden at launch
@@ -108,6 +112,70 @@ bool FlutterWindow::OnCreate() {
   flutter_controller_->ForceRedraw();
 
   return true;
+}
+
+void FlutterWindow::RegisterMitPlatformChannel() {
+  mit_platform_channel_ = std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
+      flutter_controller_->engine()->messenger(), "com.mitsvpn.app/platform",
+      &flutter::StandardMethodCodec::GetInstance());
+  mit_platform_channel_->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
+        if (call.method_name() == "mit_vpn_environment") {
+          INetworkListManager* manager = nullptr;
+          NLM_CONNECTIVITY connectivity = NLM_CONNECTIVITY_DISCONNECTED;
+          if (FAILED(CoCreateInstance(CLSID_NetworkListManager, nullptr, CLSCTX_ALL,
+                                      IID_PPV_ARGS(&manager))) || !manager) {
+            result->Error("network_status", "Unable to read Windows network status");
+            return;
+          }
+          const HRESULT status = manager->GetConnectivity(&connectivity);
+          manager->Release();
+          if (FAILED(status)) {
+            result->Error("network_status", "Unable to read Windows network status");
+            return;
+          }
+          // Recovery must not repeatedly request UAC after permission was denied.
+          bool permission = false;
+          HANDLE token = nullptr;
+          if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &token)) {
+            TOKEN_ELEVATION elevation = {};
+            DWORD size = 0;
+            if (GetTokenInformation(token, TokenElevation, &elevation, static_cast<DWORD>(sizeof(elevation)), &size)) {
+              permission = elevation.TokenIsElevated != 0;
+            }
+            CloseHandle(token);
+          }
+          SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT);
+          if (scm) {
+            // This identifier is part of the upstream core's native service API.
+            SC_HANDLE service = OpenServiceW(scm, L"HiddifyAdminBG", SERVICE_QUERY_STATUS);
+            if (service) {
+              SERVICE_STATUS service_status = {};
+              if (QueryServiceStatus(service, &service_status) && service_status.dwCurrentState == SERVICE_RUNNING) permission = true;
+              CloseServiceHandle(service);
+            }
+            CloseServiceHandle(scm);
+          }
+          result->Success(flutter::EncodableValue(flutter::EncodableMap{
+              {flutter::EncodableValue("networkAvailable"), flutter::EncodableValue(connectivity != NLM_CONNECTIVITY_DISCONNECTED)},
+              {flutter::EncodableValue("permissionGranted"), flutter::EncodableValue(permission)},
+              {flutter::EncodableValue("stopEpoch"), flutter::EncodableValue(0)},
+              {flutter::EncodableValue("protectionSupported"), flutter::EncodableValue(false)},
+          }));
+          return;
+        }
+        const wchar_t* settings = nullptr;
+        if (call.method_name() == "mit_open_vpn_settings") settings = L"ms-settings:network-vpn";
+        if (call.method_name() == "mit_open_battery_settings") settings = L"ms-settings:powersleep";
+        if (settings) {
+          const auto status = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", settings, nullptr, nullptr, SW_SHOWNORMAL));
+          if (status <= 32) result->Error("settings", "Unable to open Windows settings");
+          else result->Success();
+          return;
+        }
+        result->NotImplemented();
+      });
 }
 
 void FlutterWindow::RegisterDesktopStatusChannel() {
@@ -196,6 +264,7 @@ void FlutterWindow::SetTaskbarStatusOverlay(const std::string& status) {
 
 void FlutterWindow::OnDestroy() {
   SetTaskbarStatusOverlay("none");
+  mit_platform_channel_.reset();
   if (flutter_controller_) {
     flutter_controller_ = nullptr;
   }
