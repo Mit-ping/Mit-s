@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'native_fixture.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hiddify/hiddifycore/core_interface/core_interface_desktop.dart';
@@ -27,20 +28,18 @@ void main() {
       return;
     }
 
-    final tmp = await Directory.systemTemp.createTemp('hiddify-mtls-desktop-');
+    final original = Directory.current;
+    final tmp = await createNativeFixture('mits-mtls-desktop-');
     addTearDown(() async {
       try {
         CoreInterfaceDesktop.nativeLibrary.closeGrpc(SetupMode.GRPC_NORMAL.value);
       } catch (_) {}
-      await tmp.delete(recursive: true);
+      Directory.current = original;
+      await cleanNativeFixture(tmp);
     });
 
     final core = CoreInterfaceDesktop(port: 17178);
-    final err = await core.setup(
-      (baseDir: tmp, workingDir: tmp, tempDir: tmp),
-      true,
-      SetupMode.GRPC_NORMAL.value,
-    );
+    final err = await core.setup((baseDir: tmp, workingDir: tmp, tempDir: tmp), true, SetupMode.GRPC_NORMAL.value);
     expect(err, isEmpty, reason: 'setup should succeed with mTLS: $err');
 
     final info = await core.fgClient.getSystemInfo(Empty());

@@ -83,8 +83,12 @@ jobs:
       - name: Analyze and test
         env:
           MIT_REQUIRE_AWG_NATIVE_TESTS: 'true'
+          MIT_NATIVE_TEST_DIRECTORY: ${{ runner.temp }}/mit-native-tests
         run: |
           set -euo pipefail
+          native_fixture="$(cygpath -u "$MIT_NATIVE_TEST_DIRECTORY")"
+          mkdir -p "$native_fixture"
+          trap 'rm -rf "$native_fixture"' EXIT
           flutter analyze --no-fatal-infos --no-fatal-warnings
           flutter test
 
