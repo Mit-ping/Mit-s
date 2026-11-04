@@ -82,7 +82,7 @@ class AppDirectories extends _$AppDirectories with InfraLogger {
   }
 
   static Future<Directory>? _windowsSupport;
-  static Future<Directory> _getSupportDirectory() async {
+  static Future<Directory> _getSupportDirectory() {
     if (!Platform.isWindows) return getApplicationSupportDirectory();
     return _windowsSupport ??= _migrateSupportDirectory();
   }

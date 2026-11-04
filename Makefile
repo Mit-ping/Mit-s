@@ -316,15 +316,15 @@ windows-zip-release:
 	$(YELLOW)Post-processing Windows portable$(DONE); \
 	cd "$$ZIP_DIR"; \
 	$(BLUE)Extracting and Repacking...$(DONE); \
-	mkdir -p Hiddify; \
-	unzip -q "$$ZIP_FILE" -d Hiddify/; \
+	mkdir -p MitsVPN; \
+	unzip -q "$$ZIP_FILE" -d MitsVPN/; \
 	rm "$$ZIP_FILE"; \
 	if command -v 7z > /dev/null 2>&1; then \
-	  7z a -tzip -bso0 -bsp0 "$$FILE_NAME.zip" Hiddify; \
+	  7z a -tzip -bso0 -bsp0 "$$FILE_NAME.zip" MitsVPN; \
 	else \
-	  pwsh -NoProfile -Command "Compress-Archive -Path Hiddify -DestinationPath '$$FILE_NAME.zip' -Force"; \
+	  pwsh -NoProfile -Command "Compress-Archive -Path MitsVPN -DestinationPath '$$FILE_NAME.zip' -Force"; \
 	fi; \
-	rm -rf Hiddify; \
+	rm -rf MitsVPN; \
 	$(GREEN)Successful$(DONE)
 
 windows-exe-release:

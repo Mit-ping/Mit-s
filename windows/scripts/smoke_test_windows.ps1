@@ -23,6 +23,7 @@ try {
     $executables = @(Get-ChildItem $destination -Recurse -Filter MitsVPN.exe -File)
     if ($executables.Count -ne 1) { throw 'Expected one MitsVPN.exe in portable package' }
     $executable = $executables[0]
+    if ($executable.Directory.Name -ne 'MitsVPN') { throw 'Unexpected portable package folder' }
     if ($executable.VersionInfo.ProductName -ne 'MitsVPN' -or $executable.VersionInfo.FileDescription -ne "Mit's VPN") {
         throw 'Executable metadata still contains the wrong product identity'
     }
