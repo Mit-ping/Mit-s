@@ -1,3 +1,9 @@
+## 1.5.0-beta.1 — Windows
+
+- Подготовлен бета-выпуск для Windows x64: Setup EXE, MSIX и portable ZIP.
+- CI и релиз настроены на сборку только Windows.
+- Ошибки Windows-сборки и отсутствие пакетов блокируют выпуск.
+
 # Changelog
 
 ## [0.16.0.dev] - 2024-2-18

@@ -1,9 +1,9 @@
-**Download based on your OS:**
+# VPN 1.5 beta — Windows x64
 
-**بر اساس سیستم عامل خود دانلود کنید:**
+Бета-версия для Windows x64. Доступны Setup EXE, MSIX и portable ZIP.
 
 ## Downloads
 
 <!-- ASSET_LINKS -->
 
-**List of all changes:** [ChangeLog](https://github.com/hiddify/hiddify-app/blob/main/HISTORY.md)
+[Изменения](https://github.com/Mit-ping/Mit-s/blob/main/CHANGELOG.md)

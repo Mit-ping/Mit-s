@@ -1,0 +1,110 @@
+name: Windows beta build (artifacts only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/windows-1.5-beta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-beta-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    env:
+      CHANNEL: prod
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Configure package cache
+        run: echo "PUB_CACHE=$(cygpath -m "$RUNNER_TEMP")/pub-cache" >> "$GITHUB_ENV"
+
+      - uses: subosito/flutter-action@v2.21.0
+        with:
+          flutter-version: '3.38.5'
+          channel: stable
+          cache: true
+
+      - name: Install Windows packaging tools
+        shell: pwsh
+        run: |
+          choco install make innosetup --yes --no-progress
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Dart dependencies
+        run: |
+          set -euo pipefail
+          flutter config --no-analytics --enable-windows-desktop
+          flutter pub get --enforce-lockfile
+          make windows-install-deps
+          echo "$PUB_CACHE/bin" >> "$GITHUB_PATH"
+
+      - name: Generate sources
+        run: |
+          set -euo pipefail
+          make gen translate
+
+      - name: Download compatible Windows VPN core
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # v4.1.0 lacks HiddifyAdmin.exe, required by windows/CMakeLists.txt.
+          # Pin the compatible upstream asset by ID and SHA256, not the moving draft tag.
+          archive="$RUNNER_TEMP/windows-vpn-core.tar.gz"
+          gh api --method GET -H 'Accept: application/octet-stream' \
+            repos/hiddify/hiddify-core/releases/assets/706285436 > "$archive"
+          echo "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff  $archive" | sha256sum --check -
+          mkdir -p hiddify-core/bin
+          tar -xzf "$archive" -C hiddify-core/bin
+          for file in hiddify-core.dll libcronet.dll HiddifyCli.exe HiddifyAdmin.exe; do
+            test -s "hiddify-core/bin/$file"
+          done
+
+      - name: Analyze and test
+        run: |
+          set -euo pipefail
+          flutter analyze --no-fatal-infos --no-fatal-warnings
+          flutter test
+
+      - name: Build portable ZIP
+        run: make windows-zip-release
+
+      - name: Build Setup EXE
+        run: make windows-exe-release
+
+      - name: Collect Windows downloads
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Path out -Force | Out-Null
+          $targets = @{
+            '.exe' = 'VPN-1.5.0-beta.1-Windows-x64-Setup.exe'
+            '.zip' = 'VPN-1.5.0-beta.1-Windows-x64-Portable.zip'
+          }
+          foreach ($extension in $targets.Keys) {
+            $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -eq $extension })
+            if ($files.Count -ne 1) { throw "Expected one $extension package, found $($files.Count)" }
+            if ($files[0].Length -eq 0) { throw "Empty package: $($files[0].FullName)" }
+            Copy-Item $files[0].FullName (Join-Path out $targets[$extension])
+          }
+          Get-ChildItem out -File | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)"
+          } | Set-Content out/SHA256SUMS.txt -Encoding ascii
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: VPN-1.5.0-beta.1-Windows-x64
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14

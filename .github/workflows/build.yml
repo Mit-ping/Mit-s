@@ -2,6 +2,10 @@ name: Build
 on:
   workflow_call:
     inputs:
+      windows-only:
+        description: Build and publish Windows x64 packages only
+        type: boolean
+        default: false
       upload-artifact:
         type: boolean
         default: true
@@ -52,6 +56,7 @@ jobs:
           cache: true
 
       - name: Validate iOS release configuration
+        if: ${{ !inputs.windows-only }}
         run: python3 .github/scripts/validate_ios_release_config.py
 
       - name: Prepare
@@ -65,35 +70,24 @@ jobs:
 
       - name: make draftBuildCode
         id: draftBuildCode
-        run: echo "::set-output name=datetime::$(date +'%d.%H.%M')"
+        run: echo "datetime=$(date +'%d.%H.%M')" >> "$GITHUB_OUTPUT"
 
 
   build:
     needs: test
+    env:
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
     permissions:
       contents: read
       # Azure Artifact Signing (azure/login OIDC) and actions/attest-build-provenance
       id-token: write
       attestations: write
-    continue-on-error: ${{ matrix.platform != 'ios' }}
+    continue-on-error: ${{ matrix.platform != 'ios' && matrix.platform != 'windows' }}
 
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # Quote multi-target lists: in YAML flow maps, commas start a new key
-          # (`targets: exe,msix,zip` was parsed as targets=exe only).
-          - { platform: android-apk,       os: ubuntu-latest,  targets: apk }
-          # - { platform: android-aab,       os: ubuntu-latest,  targets: aab }
-          - { platform: windows,          os: windows-latest, aarch: amd64,     targets: "exe,msix,zip" }
-          - { platform: linux,            os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz,AppImage" }
-          # - { platform: linux-amd64,      os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz" }
-          # - { platform: linux-arm64,      os: ubuntu-24.04-arm, aarch: arm64,   targets: "deb,gz" }
-          # - { platform: linux-amd64-musl, os: ubuntu-22.04,   aarch: amd64,     targets: "deb,gz" }
-          # - { platform: linux-arm64-musl, os: ubuntu-24.04-arm, aarch: arm64,   targets: "deb,gz" }
-          - { platform: macos,            os: macos-15,       aarch: universal, targets: "dmg,pkg" }
-          # - { platform: macos-appstore,   os: macos-26,       aarch: universal, targets: "pkg,dmg" }
-          # - { platform: ios,              os: macos-26,       aarch: universal, filename: hiddify-ios, targets: ipa }
+        include: ${{ fromJSON(inputs.windows-only && '[{"platform":"windows","os":"windows-latest","aarch":"amd64","targets":"exe,msix,zip"}]' || '[{"platform":"android-apk","os":"ubuntu-latest","targets":"apk"},{"platform":"windows","os":"windows-latest","aarch":"amd64","targets":"exe,msix,zip"},{"platform":"linux","os":"ubuntu-22.04","aarch":"amd64","targets":"deb,gz,AppImage"},{"platform":"macos","os":"macos-15","aarch":"universal","targets":"dmg,pkg"}]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - name: checkout
@@ -235,9 +229,16 @@ jobs:
             gradle-${{ runner.os }}-
                   
       - name: Setup dependencies
+        shell: bash
         run: |
           make ${{ matrix.platform }}-install-deps  
-          echo "$HOME/.pub-cache/bin" >> $GITHUB_PATH
+          if [[ -n "${PUB_CACHE:-}" ]]; then
+            echo "$PUB_CACHE/bin" >> "$GITHUB_PATH"
+          elif [[ "$RUNNER_OS" == 'Windows' ]]; then
+            echo "$(cygpath -m "$LOCALAPPDATA")/Pub/Cache/bin" >> "$GITHUB_PATH"
+          else
+            echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Setup Android Signing Properties
         if: ${{ inputs.upload-artifact && startsWith(matrix.platform,'android') }}
@@ -348,7 +349,9 @@ jobs:
         shell: pwsh
         run: |
           make windows-exe-release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           make windows-msix-release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build the Mac App Store version
         if: matrix.platform == 'macos-appstore' && inputs.upload-artifact
@@ -407,8 +410,7 @@ jobs:
               $_.Extension.TrimStart('.').ToLowerInvariant() -eq $ext.ToLowerInvariant()
             }
             if (-not $files) {
-              Write-Warning "No *.$ext under dist for $targetName"
-              continue
+              throw "No *.$ext under dist for $targetName"
             }
             foreach ($file in $files) {
               # Preserve catalog casing for msix (Hiddify-Windows-Setup-x64.Msix).
@@ -432,7 +434,7 @@ jobs:
           subject-path: out/*
 
       - name: Upload Debug Symbols
-        if: ${{ inputs.upload-artifact && inputs.tag-name != 'draft' }}
+        if: ${{ inputs.upload-artifact && inputs.tag-name != 'draft' && env.SENTRY_AUTH_TOKEN != '' }}
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -534,7 +536,8 @@ jobs:
         with:
           name: ${{matrix.platform}}
           path: ./out
-          retention-days: 1
+          retention-days: 14
+          if-no-files-found: error
 
       # Profiles only — leave signing_temp.keychain for import-codesign-certs post cleanup.
       - name: Clean up provisioning profiles
@@ -631,7 +634,9 @@ jobs:
           ls -R ./out
           ls -R ./.github/
           ls -R ./.git/
-          mv out/hiddify-android-market.aab  hiddify-android-market.aab
+          if [[ -f out/hiddify-android-market.aab ]]; then
+            mv out/hiddify-android-market.aab hiddify-android-market.aab
+          fi
 
       - name: prepare_release_message
         run: |
@@ -652,9 +657,11 @@ jobs:
           files: ./out/*
 
       - name: Create service_account.json
+        if: ${{ !inputs.windows-only }}
         run: echo '${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}' > service_account.json
 
       - name: Deploy to Google Play Internal Testers
+        if: ${{ !inputs.windows-only }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: service_account.json
@@ -679,7 +686,7 @@ jobs:
     permissions:
       actions: read
       contents: read
-    if: ${{ inputs.upload-artifact }}
+    if: ${{ inputs.upload-artifact && !inputs.windows-only }}
     runs-on: macos-26
     timeout-minutes: 60
     steps:

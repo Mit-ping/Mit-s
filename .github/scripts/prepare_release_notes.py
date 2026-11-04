@@ -12,6 +12,7 @@ do not keep a stale “Error 404” after a new scan.
 from __future__ import annotations
 
 import hashlib
+import os
 import random
 import re
 import sys
@@ -38,7 +39,7 @@ ASSET_CATALOG: list[tuple[str, str, str]] = [
 ]
 
 ASSET_MARKER = "<!-- ASSET_LINKS -->"
-REPO = "hiddify/hiddify-app"
+REPO = os.environ.get("GITHUB_REPOSITORY", "Mit-ping/Mit-s")
 
 
 def sha256_file(path: Path) -> str:
