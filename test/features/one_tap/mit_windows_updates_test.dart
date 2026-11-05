@@ -17,7 +17,7 @@ void main() {
     'platform': 'windows',
     'architecture': 'x64',
     'version': '1.6.0-beta.1',
-    'build_number': 10502,
+    'build_number': 10600,
     'setup_filename': name,
     'setup_size': bytes.length,
     'setup_sha256': sha256.convert(bytes).toString(),
@@ -34,7 +34,7 @@ void main() {
   test('Windows manifest requires this app, x64, matching tag and canonical EXE asset', () {
     final update = parseMitWindowsUpdate(release(), manifest())!;
     expect(update.version, '1.6.0-beta.1');
-    expect(parseMitWindowsUpdate(release(), manifest(), currentBuild: 10502), isNull);
+    expect(parseMitWindowsUpdate(release(), manifest(), currentBuild: 10600), isNull);
     for (final invalid in [
       {...manifest(), 'platform': 'android'},
       {...manifest(), 'architecture': 'arm64'},

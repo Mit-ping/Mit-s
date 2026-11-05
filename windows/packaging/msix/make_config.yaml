@@ -1,7 +1,7 @@
 display_name: "Mit's VPN"
 publisher_display_name: "Mit's VPN"
 identity_name: MitVPN.MitsVPN
-msix_version: 1.5.0.2
+msix_version: 1.5.0.3
 logo_path: windows\runner\resources\app_icon.ico
 capabilities: internetClient, internetClientServer, privateNetworkClientServer
 languages: ar, en-us, es-es, fa-ir, fr-fr, id-id, pt-br, ru-ru, tr-tr, zh-cn, zh-tw

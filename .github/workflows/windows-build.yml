@@ -56,6 +56,9 @@ jobs:
           make windows-install-deps
           echo "$PUB_CACHE/bin" >> "$GITHUB_PATH"
 
+      - name: Validate installer executable selection
+        run: dart --packages="$PUB_CACHE/global_packages/fastforge/.dart_tool/package_config.json" .github/scripts/check_windows_installer_config.dart
+
       - name: Generate sources
         run: |
           set -euo pipefail
@@ -100,8 +103,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path out -Force | Out-Null
           $targets = @{
-            '.exe' = 'MitsVPN-1.5.0-beta.2-Windows-x64-Setup.exe'
-            '.zip' = 'MitsVPN-1.5.0-beta.2-Windows-x64-Portable.zip'
+            '.exe' = 'MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe'
+            '.zip' = 'MitsVPN-1.5.0-beta.3-Windows-x64-Portable.zip'
           }
           foreach ($extension in $targets.Keys) {
             $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -eq $extension })
@@ -109,10 +112,10 @@ jobs:
             if ($files[0].Length -eq 0) { throw "Empty package: $($files[0].FullName)" }
             Copy-Item $files[0].FullName (Join-Path out $targets[$extension])
           }
-          $setup = Get-Item out/MitsVPN-1.5.0-beta.2-Windows-x64-Setup.exe
+          $setup = Get-Item out/MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe
           @{
             schema = 1; app_id = 'com.mitsvpn.app'; platform = 'windows'; architecture = 'x64'
-            version = '1.5.0-beta.2'; build_number = 10501
+            version = '1.5.0-beta.3'; build_number = 10502
             setup_filename = $setup.Name; setup_size = $setup.Length
             setup_sha256 = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content out/mits-vpn-windows-update.json -Encoding utf8
@@ -123,11 +126,24 @@ jobs:
 
       - name: Verify portable application starts
         shell: pwsh
-        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/MitsVPN-1.5.0-beta.2-Windows-x64-Portable.zip -Screenshot out/MitsVPN-Windows-preview.png
+        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/MitsVPN-1.5.0-beta.3-Windows-x64-Portable.zip -Screenshot out/MitsVPN-Windows-preview.png
+
+      - name: Verify installed application and desktop shortcut
+        shell: pwsh
+        run: ./windows/scripts/smoke_test_installer.ps1 -Setup out/MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe -OutputDirectory out/installer-check
+
+      - name: Upload installer diagnostics
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: MitsVPN-installer-diagnostics
+          path: out/installer-check
+          if-no-files-found: ignore
+          retention-days: 14
 
       - uses: actions/upload-artifact@v6
         with:
-          name: MitsVPN-1.5.0-beta.2-Windows-x64
+          name: MitsVPN-1.5.0-beta.3-Windows-x64
           path: out/*
           if-no-files-found: error
           retention-days: 14
