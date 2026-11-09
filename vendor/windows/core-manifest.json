@@ -2,6 +2,14 @@
   "source_repository": "https://github.com/hiddify/hiddify-core",
   "original_asset_id": 706285436,
   "original_asset_name": "hiddify-lib-windows-amd64.tar.gz",
-  "sha256": "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff",
-  "note": "Previously verified upstream asset, vendored after upstream removed the temporary release asset. Native filenames and licence attribution are retained."
+  "sha256": "2c5820251029ecfdaedc91c197d48c4cbaae277f62187d3579d0322eb3579bd6",
+  "note": "Rebuilt from the exact previously bundled source revision with locale-neutral secret ACLs and correct CLI exit codes. Full applied source diff and recursive submodule revisions are included. The go.mod diff only moves x/crypto to indirect; dependency versions are unchanged. Native filenames and licence attribution are retained.",
+  "source_revision": "2abb184510f62ce0fdc16712b9052bf1f18d272a",
+  "build_id": "mits-vpn-windows-beta4-sid-acl",
+  "build_run": "https://github.com/Mit-ping/Mit-s/actions/runs/42597995759",
+  "patches": [
+    "patches/0001-windows-control-secret-sids.patch",
+    "patches/0002-windows-cli-error-status.patch"
+  ],
+  "previous_sha256": "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff"
 }

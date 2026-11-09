@@ -3,6 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:hiddify/core/localization/translations.dart';
 import 'package:hiddify/core/model/failures.dart';
 import 'package:hiddify/features/settings/model/config_option_failure.dart';
+import 'package:hiddify/hiddifycore/core_interface/desktop_vpn_exception.dart';
 
 part 'connection_failure.freezed.dart';
 
@@ -49,6 +50,24 @@ sealed class ConnectionFailure with _$ConnectionFailure, Failure {
     PlatformException(code: 'MACOS_VPN', message: final message?) => ConnectionFailure.unexpected(message, stackTrace),
     _ => ConnectionFailure.unexpected(error, stackTrace),
   };
+
+  /// One-tap messages contain fixed text only; native errors can contain credentials.
+  ({String type, String? message}) presentOneTap({required bool windows}) {
+    final message = switch (this) {
+      UnexpectedConnectionFailure(error: final DesktopVpnException error) => error.toString(),
+      MissingPrivilege() ||
+      MissingVpnPermission() when windows => const DesktopVpnException(DesktopVpnError.permission).toString(),
+      TunAddressInUse() when windows =>
+        'Адрес VPN-туннеля занят. Отключите другой VPN и повторите подключение. Код: WIN-VPN-06.',
+      InvalidConfig() || InvalidConfigOption() => 'Не удалось применить профиль VPN. Проверьте конфигурацию профиля.',
+      BackgroundCoreNotAvailable() when windows => const DesktopVpnException(
+        DesktopVpnError.controlConnection,
+      ).toString(),
+      _ when windows => 'Не удалось подключить VPN в Windows. Проверьте сеть и профиль. Код: WIN-VPN-00.',
+      _ => 'Проверьте сеть, профиль и разрешение на подключение VPN.',
+    };
+    return (type: 'Ошибка VPN', message: message);
+  }
 
   @override
   ({String type, String? message}) present(TranslationsEn t) {

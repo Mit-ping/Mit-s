@@ -1,0 +1,86 @@
+diff --git a/cmd/clilauncher/main.c b/cmd/clilauncher/main.c
+index 0150cc7..d6118ab 100644
+--- a/cmd/clilauncher/main.c
++++ b/cmd/clilauncher/main.c
+@@ -42,5 +42,5 @@ int main(void) {
+   }
+   for (int i = 0; i < argc; i++) free(argv[i]);
+   free(argv);
+-  return 0;
++  return (result && result[0]) ? 1 : 0;
+ }
+diff --git a/go.mod b/go.mod
+index ab6e07d..7f693f0 100644
+--- a/go.mod
++++ b/go.mod
+@@ -30,7 +30,6 @@ require (
+ 	github.com/xmdhs/clash2singbox v0.2.0
+ 	github.com/xtls/libxray v1.261031.0
+ 	github.com/xtls/xray-core v1.260327.1-0.20261031132019-a4a3dff5b20c
+-	golang.org/x/crypto v0.58.0
+ 	golang.org/x/net v0.62.0
+ 	golang.org/x/sys v0.49.0
+ 	google.golang.org/grpc v1.85.0
+@@ -302,6 +301,7 @@ require (
+ 	go.yaml.in/yaml/v3 v3.0.6 // indirect
+ 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
+ 	go4.org/netipx v0.0.0-20260823151212-3075585bcbeb // indirect
++	golang.org/x/crypto v0.58.0 // indirect
+ 	golang.org/x/crypto/x509roots/fallback v0.0.0-20261030153154-30a33513ff6d // indirect
+ 	golang.org/x/exp v0.0.0-20261014143641-f0251eb4aa3e // indirect
+ 	golang.org/x/image v0.47.0 // indirect
+diff --git a/v2/hcore/adminbgservice/secret_windows.go b/v2/hcore/adminbgservice/secret_windows.go
+index 9b5371e..76aaaee 100644
+--- a/v2/hcore/adminbgservice/secret_windows.go
++++ b/v2/hcore/adminbgservice/secret_windows.go
+@@ -6,28 +6,35 @@ import (
+ 	"fmt"
+ 	"os/user"
+ 
+-	"github.com/hectane/go-acl"
+ 	"golang.org/x/sys/windows"
+ )
+ 
+-// Restrict the secret to the installing user (read), SYSTEM and Administrators (full).
+-// The DACL is set through the Windows security API (go-acl) rather than by spawning
+-// icacls.exe: a process launching icacls with /inheritance:r and /grant is a pattern
+-// antivirus heuristics and Sigma rules watch for, the API call is invisible to them.
++// Use SIDs throughout: account display names vary with the Windows language.
++// Fail closed if the original caller cannot be resolved; an elevated account
++// must never silently replace the user who needs to read the control secret.
+ func chownSecret(path, owner string) error {
+-	account := owner
+-	if _, err := user.Lookup(owner); err != nil {
+-		if current, lookupErr := user.Current(); lookupErr == nil {
+-			account = current.Username
+-		}
++	account, err := user.Lookup(owner)
++	if err != nil {
++		return fmt.Errorf("resolve tunnel secret owner: %w", err)
++	}
++	sid, err := windows.StringToSid(account.Uid)
++	if err != nil {
++		return fmt.Errorf("resolve tunnel secret owner SID: %w", err)
+ 	}
+-	err := acl.Apply(path, true, false,
+-		acl.GrantName(windows.GENERIC_READ, account),
+-		acl.GrantName(windows.GENERIC_ALL, `NT AUTHORITY\SYSTEM`),
+-		acl.GrantName(windows.GENERIC_ALL, `BUILTIN\Administrators`),
++	descriptor, err := windows.SecurityDescriptorFromString(
++		"D:P(A;;GR;;;" + sid.String() + ")(A;;GA;;;SY)(A;;GA;;;BA)",
+ 	)
+ 	if err != nil {
+-		return fmt.Errorf("restrict tunnel secret ACL for %s: %w", account, err)
++		return fmt.Errorf("create tunnel secret ACL: %w", err)
++	}
++	dacl, _, err := descriptor.DACL()
++	if err != nil {
++		return fmt.Errorf("read tunnel secret ACL: %w", err)
++	}
++	if err := windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT,
++		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
++		nil, nil, dacl, nil); err != nil {
++		return fmt.Errorf("restrict tunnel secret ACL: %w", err)
+ 	}
+ 	return nil
+ }

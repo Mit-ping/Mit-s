@@ -67,10 +67,10 @@ jobs:
       - name: Prepare verified Windows VPN core
         run: |
           set -euo pipefail
-          # v4.1.0 lacks HiddifyAdmin.exe, required by windows/CMakeLists.txt.
-          # The original temporary asset was removed upstream; use the verified vendored archive.
+          # Pinned source rebuild with locale-neutral Windows service permissions.
+          # Provenance and reviewed patches are in vendor/windows/.
           archive="$PWD/vendor/windows/vpn-core.tar.gz"
-          echo "a4fb3af453371b0a095813e6c7e887872146098c2a535b3f07d969a4c88e00ff  $archive" | sha256sum --check -
+          echo "2c5820251029ecfdaedc91c197d48c4cbaae277f62187d3579d0322eb3579bd6  $archive" | sha256sum --check -
           mkdir -p hiddify-core/bin
           tar -xzf "$archive" -C hiddify-core/bin
           for file in hiddify-core.dll libcronet.dll HiddifyCli.exe HiddifyAdmin.exe; do
@@ -78,6 +78,18 @@ jobs:
           done
           cp hiddify-core/bin/* hiddify-core/
           echo "$(cygpath -m "$PWD/hiddify-core")" >> "$GITHUB_PATH"
+
+      - name: Verify localized Windows service and real TUN traffic
+        shell: pwsh
+        run: |
+          $group = Get-LocalGroup -SID 'S-1-5-32-544'
+          $originalName = $group.Name
+          try {
+            Rename-LocalGroup -SID 'S-1-5-32-544' -NewName 'Администраторы VPN'
+            ./windows/scripts/smoke_test_vpn_service.ps1 -CoreDirectory hiddify-core/bin
+          } finally {
+            Rename-LocalGroup -SID 'S-1-5-32-544' -NewName $originalName
+          }
 
       - name: Analyze and test
         env:
@@ -103,8 +115,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Path out -Force | Out-Null
           $targets = @{
-            '.exe' = 'MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe'
-            '.zip' = 'MitsVPN-1.5.0-beta.3-Windows-x64-Portable.zip'
+            '.exe' = 'MitsVPN-1.5.0-beta.4-Windows-x64-Setup.exe'
+            '.zip' = 'MitsVPN-1.5.0-beta.4-Windows-x64-Portable.zip'
           }
           foreach ($extension in $targets.Keys) {
             $files = @(Get-ChildItem dist -Recurse -File | Where-Object { $_.Extension -eq $extension })
@@ -112,10 +124,10 @@ jobs:
             if ($files[0].Length -eq 0) { throw "Empty package: $($files[0].FullName)" }
             Copy-Item $files[0].FullName (Join-Path out $targets[$extension])
           }
-          $setup = Get-Item out/MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe
+          $setup = Get-Item out/MitsVPN-1.5.0-beta.4-Windows-x64-Setup.exe
           @{
             schema = 1; app_id = 'com.mitsvpn.app'; platform = 'windows'; architecture = 'x64'
-            version = '1.5.0-beta.3'; build_number = 10502
+            version = '1.5.0-beta.4'; build_number = 10503
             setup_filename = $setup.Name; setup_size = $setup.Length
             setup_sha256 = (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           } | ConvertTo-Json | Set-Content out/mits-vpn-windows-update.json -Encoding utf8
@@ -126,24 +138,24 @@ jobs:
 
       - name: Verify portable application starts
         shell: pwsh
-        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/MitsVPN-1.5.0-beta.3-Windows-x64-Portable.zip -Screenshot out/MitsVPN-Windows-preview.png
+        run: ./windows/scripts/smoke_test_windows.ps1 -Archive out/MitsVPN-1.5.0-beta.4-Windows-x64-Portable.zip -Screenshot out/MitsVPN-Windows-preview.png
 
       - name: Verify installed application and desktop shortcut
         shell: pwsh
-        run: ./windows/scripts/smoke_test_installer.ps1 -Setup out/MitsVPN-1.5.0-beta.3-Windows-x64-Setup.exe -OutputDirectory out/installer-check
+        run: ./windows/scripts/smoke_test_installer.ps1 -Setup out/MitsVPN-1.5.0-beta.4-Windows-x64-Setup.exe -OutputDirectory out/installer-check
 
-      - name: Upload installer diagnostics
+      - name: Upload Windows diagnostics
         if: ${{ failure() }}
         uses: actions/upload-artifact@v6
         with:
-          name: MitsVPN-installer-diagnostics
-          path: out/installer-check
+          name: MitsVPN-Windows-diagnostics
+          path: out/
           if-no-files-found: ignore
           retention-days: 14
 
       - uses: actions/upload-artifact@v6
         with:
-          name: MitsVPN-1.5.0-beta.3-Windows-x64
+          name: MitsVPN-1.5.0-beta.4-Windows-x64
           path: out/*
           if-no-files-found: error
           retention-days: 14

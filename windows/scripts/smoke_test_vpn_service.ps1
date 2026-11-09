@@ -4,12 +4,15 @@ $CoreDirectory = (Resolve-Path $CoreDirectory).Path
 New-Item -ItemType Directory -Force $OutputDirectory | Out-Null
 $OutputDirectory = (Resolve-Path $OutputDirectory).Path
 $cli = Join-Path $CoreDirectory 'HiddifyCli.exe'
+$admin = Join-Path $CoreDirectory 'HiddifyAdmin.exe'
 $serviceName = 'HiddifyAdminBG'
 $owner = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-$report = [ordered]@{ service_installed = $false; secret_acl = $false; engine_started = $false; proxy_traffic = $false; tun_created = $false; tun_traffic = $false }
+$report = [ordered]@{ service_installed = $false; secret_acl = $false; engine_started = $false; proxy_traffic = $false; tun_created = $false; tun_traffic = $false; failed_connect_rejected = $false }
 $origin = $null
 try {
-    & $cli admin_bgservice install $owner 2>&1 | Out-File (Join-Path $OutputDirectory 'install.log')
+    $install = Start-Process -FilePath $admin -ArgumentList @('admin_bgservice', 'install', ('"' + $owner + '"')) -Wait -PassThru
+    "exit_code=$($install.ExitCode)" | Set-Content (Join-Path $OutputDirectory 'install.log')
+    if ($install.ExitCode -ne 0) { throw 'Elevated helper failed to install the VPN service' }
     $service = Get-Service $serviceName
     $service.WaitForStatus('Running', [TimeSpan]::FromSeconds(25))
     $report.service_installed = $true
@@ -21,7 +24,15 @@ try {
         if ($sid -notin $sids) { throw "Missing expected ACL SID: $sid" }
     }
     if (-not $acl.AreAccessRulesProtected) { throw 'Secret ACL must disable inherited access' }
+    $allowedSids = @('S-1-5-18', 'S-1-5-32-544', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
+    if (@($sids | Where-Object { $_ -notin $allowedSids }).Count -ne 0) { throw 'Unexpected access to the service secret' }
     $report.secret_acl = $true
+    # The former CLI launcher returned zero even when the core rejected the profile.
+    $invalidPath = Join-Path $OutputDirectory 'invalid-request.json'
+    @{ configContent = '{"outbounds":[]}'; ownerPid = $PID } | ConvertTo-Json | Set-Content $invalidPath -Encoding utf8NoBOM
+    & $cli admin_bgservice connect $invalidPath 2>&1 | Out-File (Join-Path $OutputDirectory 'expected-connect-failure.log')
+    if ($LASTEXITCODE -eq 0) { throw 'CLI incorrectly reported success for an unusable profile' }
+    $report.failed_connect_rejected = $true
     # Only a reserved benchmark prefix is routed through TUN; runner access stays intact.
     $origin = Start-Job -ScriptBlock {
         function Read-Headers($stream) {
@@ -77,6 +88,7 @@ try {
     $requestPath = Join-Path $OutputDirectory 'test-request.json'
     $request | ConvertTo-Json -Depth 20 | Set-Content $requestPath -Encoding utf8NoBOM
     & $cli admin_bgservice connect $requestPath 2>&1 | Out-File (Join-Path $OutputDirectory 'connect.log')
+    if ($LASTEXITCODE -ne 0) { throw 'Background core failed to connect the test profile' }
     $adapter = Get-NetAdapter -IncludeHidden | Where-Object Name -eq 'MitsVpnTest'
     if (-not $adapter) { throw 'The background core did not create the TUN adapter' }
     $report.engine_started = $true

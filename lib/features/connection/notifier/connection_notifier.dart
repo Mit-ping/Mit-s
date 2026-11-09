@@ -346,7 +346,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       if (supportsAutomaticRecovery && _recovery.armed) {
         ref.read(mitRecoveryViewProvider.notifier).state = MitRecoveryView(active: true, phase: 'retry', attempt: _recovery.attempts);
       }
-      if (!automatic) await dialogs.showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Проверьте сеть, профиль и разрешение Android VPN.') : err.present(t));
+      if (!automatic) await dialogs.showCustomAlertFromErr(oneTapVpnEnabled ? err.presentOneTap(windows: Platform.isWindows) : err.present(t));
       loggy.warning(err);
       if (!oneTapVpnEnabled && err.toString().contains("panic")) {
         await Sentry.captureException(Exception(err.toString()));

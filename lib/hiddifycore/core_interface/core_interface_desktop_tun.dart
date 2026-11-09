@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:grpc/grpc.dart';
 import 'package:hiddify/core/model/directories.dart';
 import 'package:hiddify/hiddifycore/core_interface/core_interface_desktop.dart';
+import 'package:hiddify/hiddifycore/core_interface/desktop_vpn_exception.dart';
 import 'package:hiddify/hiddifycore/core_interface/vpn_config_snapshot.dart';
 import 'package:hiddify/hiddifycore/generated/v2/hcommon/common.pb.dart';
 import 'package:hiddify/hiddifycore/generated/v2/hcore/hcore.pb.dart';
@@ -63,8 +64,12 @@ class CoreInterfaceDesktopTun extends CoreInterfaceDesktop {
 
   String get _secretPath => p.join(_dataDir, 'control.secret');
 
-  String get _ownerUser =>
-      Platform.isWindows ? (Platform.environment['USERNAME'] ?? '') : (Platform.environment['USER'] ?? '');
+  String get _ownerUser {
+    if (!Platform.isWindows) return Platform.environment['USER'] ?? '';
+    final user = Platform.environment['USERNAME'] ?? '';
+    final domain = Platform.environment['USERDOMAIN'] ?? '';
+    return domain.isEmpty || user.isEmpty ? user : '$domain\\$user';
+  }
 
   @override
   Future<String> setup(Directories directories, bool debug, int mode) async {
@@ -146,9 +151,7 @@ class CoreInterfaceDesktopTun extends CoreInterfaceDesktop {
     }
 
     if (_isAppImage) {
-      throw StateError(
-        'VPN mode in the AppImage needs root. Quit and run: sudo ${Platform.environment['APPIMAGE']}',
-      );
+      throw StateError('VPN mode in the AppImage needs root. Quit and run: sudo ${Platform.environment['APPIMAGE']}');
     }
 
     _status.add(const CoreStatus.starting());
@@ -192,7 +195,7 @@ class CoreInterfaceDesktopTun extends CoreInterfaceDesktop {
     }
 
     EnsureAdminBgServiceProgress? last;
-    String? lastMessage;
+    var startingTunnel = false;
     await for (final event in fgClient.ensureAdminBgService(
       EnsureAdminBgServiceRequest(
         configContent: snapshot.$1,
@@ -206,27 +209,34 @@ class CoreInterfaceDesktopTun extends CoreInterfaceDesktop {
       ),
     )) {
       last = event.progress;
-      lastMessage = event.message;
+      if (event.progress == EnsureAdminBgServiceProgress.ENSURE_ADMIN_BG_SERVICE_STARTING) {
+        startingTunnel = true;
+      }
       if (event.progress == EnsureAdminBgServiceProgress.ENSURE_ADMIN_BG_FAILED_PERMISSION_DENIED ||
           event.progress == EnsureAdminBgServiceProgress.ENSURE_ADMIN_BG_FAILED_OTHER) {
-        throw StateError(
-          (event.message.isNotEmpty)
-              ? event.message
-              : 'Could not start the VPN service. Allow the administrator prompt and try again.',
-        );
+        if (Platform.isWindows) {
+          throw DesktopVpnException(
+            event.progress == EnsureAdminBgServiceProgress.ENSURE_ADMIN_BG_FAILED_PERMISSION_DENIED
+                ? DesktopVpnError.permission
+                : startingTunnel
+                ? DesktopVpnError.tunnelStart
+                : DesktopVpnError.serviceInstall,
+          );
+        }
+        throw StateError(event.message.isEmpty ? 'Could not start the VPN service.' : event.message);
       }
     }
     if (last != EnsureAdminBgServiceProgress.ENSURE_ADMIN_BG_SERVICE_CONNECTED) {
-      throw StateError(
-        (lastMessage != null && lastMessage.isNotEmpty)
-            ? lastMessage
-            : 'The VPN service did not become ready.',
-      );
+      if (Platform.isWindows) throw const DesktopVpnException(DesktopVpnError.serviceInstall);
+      throw StateError('The VPN service did not become ready.');
     }
 
-    _secret = (await File(_secretPath).readAsString()).trim();
-    if (_secret.length < 32) {
-      throw StateError('The VPN service secret is missing. Reinstall the VPN service.');
+    try {
+      _secret = (await File(_secretPath).readAsString()).trim();
+      if (_secret.length < 32) throw StateError('Invalid VPN service secret.');
+    } catch (_) {
+      if (Platform.isWindows) throw const DesktopVpnException(DesktopVpnError.controlAccess);
+      rethrow;
     }
     final old = _serviceChannel;
     _serviceChannel = ClientChannel(
@@ -236,6 +246,12 @@ class CoreInterfaceDesktopTun extends CoreInterfaceDesktop {
     );
     bgClient = CoreClient(_serviceChannel!, options: CallOptions(metadata: {'x-hiddify-secret': _secret}));
     if (old != null) unawaited(old.shutdown());
+    try {
+      await bgClient.getSystemInfo(Empty(), options: CallOptions(timeout: const Duration(seconds: 5)));
+    } catch (_) {
+      if (Platform.isWindows) throw const DesktopVpnException(DesktopVpnError.controlConnection);
+      rethrow;
+    }
     _usingAdminBg = true;
     _clientChanges.add(null);
   }
