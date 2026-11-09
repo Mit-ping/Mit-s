@@ -1,0 +1,78 @@
+name: Build Windows VPN core repair (artifact only)
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/windows-core-repair]
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Checkout exact bundled core source
+        uses: actions/checkout@v6
+        with:
+          repository: hiddify/hiddify-core
+          ref: 2abb184510f62ce0fdc16712b9052bf1f18d272a
+          path: native-source
+          submodules: recursive
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: native-source/go.mod
+          cache-dependency-path: native-source/go.sum
+      - name: Install Windows cross compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-mingw-w64-x86-64
+      - name: Apply reviewed service permission repair
+        working-directory: native-source
+        run: |
+          git apply --check ../vendor/windows/patches/0001-windows-control-secret-sids.patch
+          git apply ../vendor/windows/patches/0001-windows-control-secret-sids.patch
+          gofmt -w v2/hcore/adminbgservice/secret_windows.go
+      - name: Build complete Windows core and launchers
+        working-directory: native-source
+        env:
+          HIDDIFY_BUILD_ID: mits-vpn-windows-beta4-sid-acl
+          CODE_VERSION: '-X github.com/hiddify/hiddify-core/v2/hcommon/constants.Version=5.5.0-mits.1'
+        run: make windows-amd64
+      - name: Package core with provenance
+        run: |
+          mkdir -p out
+          tar -czf out/vpn-core.tar.gz -C native-source/bin hiddify-core.dll libcronet.dll HiddifyCli.exe HiddifyAdmin.exe
+          (cd out && sha256sum vpn-core.tar.gz > SHA256SUMS.txt)
+          git -C native-source diff > out/applied-source.patch
+          git -C native-source submodule status --recursive > out/submodules.txt
+      - uses: actions/upload-artifact@v6
+        with:
+          name: MitsVPN-Windows-core-repair
+          path: out/*
+          if-no-files-found: error
+          retention-days: 14
+  service:
+    needs: native
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: MitsVPN-Windows-core-repair
+          path: native-artifact
+      - name: Extract repaired core
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd native-artifact && sha256sum -c SHA256SUMS.txt)
+          mkdir -p core
+          tar -xzf native-artifact/vpn-core.tar.gz -C core
+      - name: Test Windows service and traffic
+        shell: pwsh
+        run: ./windows/scripts/smoke_test_vpn_service.ps1 -CoreDirectory core
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: MitsVPN-repaired-service-check
+          path: out/service-check
