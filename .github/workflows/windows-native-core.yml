@@ -29,8 +29,10 @@ jobs:
       - name: Apply reviewed service permission repair
         working-directory: native-source
         run: |
-          git apply --check ../vendor/windows/patches/0001-windows-control-secret-sids.patch
-          git apply ../vendor/windows/patches/0001-windows-control-secret-sids.patch
+          for patch in ../vendor/windows/patches/*.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+          done
           gofmt -w v2/hcore/adminbgservice/secret_windows.go
       - name: Build complete Windows core and launchers
         working-directory: native-source
