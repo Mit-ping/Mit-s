@@ -20,7 +20,15 @@ jobs:
           tar -xzf vendor/windows/vpn-core.tar.gz -C core
       - name: Test service, secret permissions and traffic
         shell: pwsh
-        run: ./windows/scripts/smoke_test_vpn_service.ps1 -CoreDirectory core
+        run: |
+          $group = Get-LocalGroup -SID 'S-1-5-32-544'
+          $originalName = $group.Name
+          try {
+            Rename-LocalGroup -SID 'S-1-5-32-544' -NewName 'Администраторы VPN'
+            ./windows/scripts/smoke_test_vpn_service.ps1 -CoreDirectory core
+          } finally {
+            Rename-LocalGroup -SID 'S-1-5-32-544' -NewName $originalName
+          }
       - uses: actions/upload-artifact@v6
         if: always()
         with:
