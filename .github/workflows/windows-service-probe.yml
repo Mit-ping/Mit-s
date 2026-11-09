@@ -1,0 +1,28 @@
+name: Windows VPN service regression
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/windows-service-probe]
+permissions:
+  contents: read
+jobs:
+  service:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - name: Extract verified VPN core
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p core
+          python -c "import hashlib,json,pathlib; p=pathlib.Path('vendor/windows'); assert hashlib.sha256((p/'vpn-core.tar.gz').read_bytes()).hexdigest()==json.loads((p/'core-manifest.json').read_text())['sha256']"
+          tar -xzf vendor/windows/vpn-core.tar.gz -C core
+      - name: Test service, secret permissions and traffic
+        shell: pwsh
+        run: ./windows/scripts/smoke_test_vpn_service.ps1 -CoreDirectory core
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: Windows-service-check
+          path: out/service-check
