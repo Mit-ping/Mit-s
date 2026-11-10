@@ -1,0 +1,149 @@
+name: Publish verified Android Beta 1.5
+
+on:
+  push:
+    branches: [build/publish-android-beta]
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-mit-beta-1.5.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: mit-beta-1.5.0
+      RELEASE_ID: '440658875'
+      RELEASE_COMMIT: '8f81ce238adadf5f4b2467b8309ab206ea7ee8be'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: 8f81ce238adadf5f4b2467b8309ab206ea7ee8be
+
+      - name: Verify the signing run succeeded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/actions/runs/42858030210" > "$RUNNER_TEMP/signing-run.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          run = json.loads((Path(os.environ['RUNNER_TEMP']) / 'signing-run.json').read_text())
+          assert run['repository']['full_name'] == os.environ['GH_REPO'] == 'Mit-ping/Mit-s'
+          assert run['path'] == '.github/workflows/android-sign-existing.yml'
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['head_sha'].startswith('ac3f66ea')
+          PY
+
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42858030210
+          name: MitsVPN-Android-50006-signed
+          path: downloaded
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;36.0.0'
+
+      - name: Validate APK and select only public release files
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, re, shutil, subprocess
+          from pathlib import Path
+          source, target = Path('downloaded'), Path('publish')
+          meta = json.loads((source / 'mits-vpn-update.json').read_text())
+          assert meta['schema'] == 1 and meta['application_id'] == 'app.hiddify.com'
+          assert meta['version'] == '1.5.0-beta' and meta['build_number'] == 50006
+          apk = source / 'mits-vpn.apk'
+          assert apk.stat().st_size == meta['apk_size'] == 182609874
+          assert hashlib.sha256(apk.read_bytes()).hexdigest() == meta['apk_sha256'] == '442fcba04ddbcf6c562b11418f2cda639624e23420ed28957bcfca2beadcb11a'
+          pin = Path('android/mit-signing-cert.sha256').read_text().strip()
+          assert (source / 'certificate-sha256.txt').read_text().strip() == pin
+          tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/36.0.0'
+          output = subprocess.run([str(tools / 'apksigner'), 'verify', '--verbose', '--print-certs', str(apk)], check=True, capture_output=True, text=True).stdout
+          assert re.findall(r'Signer #[0-9]+ certificate SHA-256 digest: ([a-fA-F0-9]+)', output) == [pin]
+          badging = subprocess.run([str(tools / 'aapt'), 'dump', 'badging', str(apk)], check=True, capture_output=True, text=True).stdout
+          assert "package: name='app.hiddify.com'" in badging and "versionCode='50006'" in badging and "versionName='1.5.0-beta'" in badging
+          assert 'application-debuggable' not in badging
+          target.mkdir(exist_ok=True)
+          names = ['mits-vpn.apk', 'mits-vpn-update.json', 'certificate-sha256.txt']
+          for name in names:
+              shutil.copyfile(source / name, target / name)
+          with (target / 'SHA256SUMS').open('w') as checksums:
+              for name in names:
+                  checksums.write(hashlib.sha256((target / name).read_bytes()).hexdigest() + '  ' + name + '\n')
+          assert {file.name for file in target.iterdir()} == set(names + ['SHA256SUMS'])
+          print('APK identity, signature, version and public asset allowlist verified.')
+          PY
+
+      - name: Verify the draft and target source revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > "$RUNNER_TEMP/draft-release.json"
+          git ls-remote --tags origin "refs/tags/$RELEASE_TAG" "refs/tags/$RELEASE_TAG^{}" > "$RUNNER_TEMP/release-tag.txt"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          release = json.loads((root / 'draft-release.json').read_text())
+          assert release['tag_name'] == os.environ['RELEASE_TAG']
+          assert release['draft'] is True and release['prerelease'] is True
+          assert release['target_commitish'] == os.environ['RELEASE_COMMIT']
+          tags = [line.split() for line in (root / 'release-tag.txt').read_text().splitlines() if line.strip()]
+          if tags:
+              target = next((sha for sha, name in tags if name.endswith('^{}')), tags[0][0])
+              assert target == os.environ['RELEASE_COMMIT']
+          PY
+
+      - name: Upload only the verified public assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release upload "$RELEASE_TAG" publish/mits-vpn.apk publish/mits-vpn-update.json publish/SHA256SUMS publish/certificate-sha256.txt --clobber
+
+      - name: Verify uploaded asset digests before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases/$RELEASE_ID" > "$RUNNER_TEMP/uploaded-release.json"
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          release = json.loads((Path(os.environ['RUNNER_TEMP']) / 'uploaded-release.json').read_text())
+          assert release['draft'] is True
+          expected = {file.name: file for file in Path('publish').iterdir()}
+          assert {asset['name'] for asset in release['assets']} == set(expected)
+          for asset in release['assets']:
+              file = expected[asset['name']]
+              assert asset['state'] == 'uploaded' and asset['size'] == file.stat().st_size
+              assert asset['digest'] == 'sha256:' + hashlib.sha256(file.read_bytes()).hexdigest()
+          PY
+
+      - name: Publish the Android beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
