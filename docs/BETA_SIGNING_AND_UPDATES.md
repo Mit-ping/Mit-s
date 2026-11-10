@@ -57,8 +57,13 @@ payload. `apksigner` verified the signature and certificate pin; package/version
 APK, update manifest, public certificate and verification receipt are separate
 from the private owner backup.
 
-The current GitHub job has no signing secrets. The owner must add the four
-repository secrets above once to enable future CI signing. This does not require
-posting the key or passwords in chat. Public update discovery still requires a
-published canonical release with its signed APK and matching update manifest;
-local files and Actions artifacts are not discovered by the app.
+The owner configured all four signing secrets on 2026-11-10. Actions run
+[42858030210](https://github.com/Mit-ping/Mit-s/actions/runs/42858030210) successfully
+re-signed the exact previously tested APK and verified the replacement certificate.
+The signing-only workflow checks the original build job, source commit, APK hash
+and unchanged application inputs before using the artifact. Private key/password
+files remain outside the repository and uploaded artifacts.
+
+Public update discovery still requires a published canonical release with its
+signed APK and matching update manifest. Local files and Actions artifacts are
+not discovered by the app.
