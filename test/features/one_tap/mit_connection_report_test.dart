@@ -75,7 +75,10 @@ void main() {
     await target.writeAsString(jsonEncode((await previous.snapshot())!.toJson()));
     final gate = Completer<File>();
     final journal = MitConnectionJournal(file: () => gate.future, listen: false);
-    addTearDown(journal.dispose);
+    addTearDown(() async {
+      journal.dispose();
+      await journal.flush();
+    });
     journal.begin(protocol: MitReportProtocol.amneziaWG, automatic: true);
     gate.complete(target);
     expect((await journal.snapshot())!.protocol, MitReportProtocol.amneziaWG);
@@ -85,7 +88,10 @@ void main() {
   test('history is bounded, retains the start and latest error, and is frozen for export', () async {
     var now = DateTime.utc(2026);
     final journal = MitConnectionJournal(now: () => now, listen: false);
-    addTearDown(journal.dispose);
+    addTearDown(() async {
+      journal.dispose();
+      await journal.flush();
+    });
     journal.begin(protocol: MitReportProtocol.unknown, automatic: false);
     journal.add(MitReportCode.connected);
     for (var i = 0; i < 1000; i++) {
@@ -109,7 +115,10 @@ void main() {
     final target = File('${directory.path}/last.json');
     await target.writeAsString('{"id":"private-key"}');
     final journal = MitConnectionJournal(file: () async => target, listen: false);
-    addTearDown(journal.dispose);
+    addTearDown(() async {
+      journal.dispose();
+      await journal.flush();
+    });
     expect(await journal.snapshot(), isNull);
     final report = MitErrorReport.create(diagnostic: '{}', attempt: await journal.snapshot());
     expect(report.hasAttempt, isFalse);
