@@ -17,7 +17,7 @@ def main():
     names = ['ANDROID_SIGNING_KEY', 'ANDROID_SIGNING_STORE_PASSWORD',
              'ANDROID_SIGNING_KEY_PASSWORD', 'ANDROID_SIGNING_KEY_ALIAS']
     if any(not os.environ.get(name) for name in names):
-        raise RuntimeError('Configure the four ANDROID_SIGNING_* repository secrets before publishing.')
+        raise RuntimeError('Configure the four ANDROID_SIGNING_* repository secrets before signing.')
     sdk = Path(os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT']) / 'build-tools/36.0.0'
     target = Path('signed')
     target.mkdir(exist_ok=True)
