@@ -87,12 +87,14 @@ void main() {
     final journal = MitConnectionJournal(now: () => now, listen: false);
     addTearDown(journal.dispose);
     journal.begin(protocol: MitReportProtocol.unknown, automatic: false);
+    journal.add(MitReportCode.connected);
     for (var i = 0; i < 1000; i++) {
       now = now.add(const Duration(milliseconds: 2));
       journal.add(i.isEven ? MitReportCode.timeout : MitReportCode.dns);
     }
     final snapshot = (await journal.snapshot())!;
     expect(snapshot.events.length, 200);
+    expect(journal.hasConnected, isTrue);
     expect(snapshot.events.first.code, MitReportCode.start);
     expect(snapshot.omitted, greaterThan(0));
     journal.finish(MitReportCode.failed);

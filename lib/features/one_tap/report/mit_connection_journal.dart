@@ -104,8 +104,9 @@ class MitConnectionJournal {
   late final Future<void> ready;
   bool _disposed = false;
   bool _capturing = false;
+  bool _connected = false;
 
-  bool get hasConnected => _last?.events.any((e) => e.code == MitReportCode.connected) ?? false;
+  bool get hasConnected => _connected;
 
   Future<void> _restore() async {
     if (file == null) return;
@@ -122,6 +123,7 @@ class MitConnectionJournal {
 
   void begin({required MitReportProtocol protocol, required bool automatic}) {
     _capturing = true;
+    _connected = false;
     _last = MitConnectionAttempt(
       id: const Uuid().v4(),
       started: _now().toUtc(),
@@ -135,6 +137,7 @@ class MitConnectionJournal {
   void add(MitReportCode code, {bool core = false, bool warning = false}) {
     final attempt = _last;
     if (_disposed || !_capturing || attempt == null || attempt.complete) return;
+    if (code == MitReportCode.connected) _connected = true;
     final ms = _now().toUtc().difference(attempt.started).inMilliseconds.clamp(0, 31536000000);
     if (attempt.events.isNotEmpty) {
       final last = attempt.events.last;
