@@ -2,5 +2,5 @@
 abstract class MitRelease {
   static const label = 'Beta 1.5';
   static const buildName = '1.5.0-beta';
-  static const buildNumber = 50005;
+  static const buildNumber = 50006;
 }

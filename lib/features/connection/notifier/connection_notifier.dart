@@ -1,7 +1,10 @@
 import 'package:hiddify/features/one_tap/one_tap_policy.dart';
+import 'package:hiddify/features/one_tap/vpn_profile.dart';
 import 'package:hiddify/features/one_tap/mit_resilience.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
 import 'dart:async';
+import 'package:hiddify/features/one_tap/report/mit_connection_journal.dart';
+import 'package:hiddify/features/one_tap/report/mit_connection_journal_provider.dart';
 import 'package:meta/meta.dart';
 import 'dart:io';
 
@@ -46,6 +49,24 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
 
     listenSelf((previous, next) async {
       if (previous == next) return;
+      final journal = _journal;
+      if (journal != null) {
+        switch (next) {
+          case AsyncData(value: Disconnected(connectionFailure: final failure?)):
+            journal.recordError(failure);
+            journal.finish(MitReportCode.failed);
+          case AsyncData(value: Disconnected()) when journal.hasConnected:
+            journal.finish(MitReportCode.stopped);
+          case AsyncData(value: Connected()): journal.add(MitReportCode.connected);
+          case AsyncData(value: Waiting()): journal.add(MitReportCode.waiting);
+          case AsyncData(value: NoAvailableProxies()): journal.add(MitReportCode.unavailable);
+          case AsyncData(value: Disconnecting()): journal.add(MitReportCode.stopping);
+          case AsyncError(:final error):
+            journal.recordError(error);
+            journal.finish(MitReportCode.failed);
+          default: break;
+        }
+      }
       if (previous case AsyncData(:final value) when !value.isConnected) {
         if (next case AsyncData(value: final Connected _)) {
           if (Platform.isAndroid && !oneTapVpnEnabled && !ref.read(Preferences.storeReviewedByUser)) {
@@ -269,6 +290,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
       }
       loggy.info("active profile changed, reconnecting");
       await ref.read(Preferences.startedByUser.notifier).update(true);
+      _beginReport(profile);
       await _connectionRepo.reconnect(profile, ref.read(Preferences.disableMemoryLimit)).mapLeft((err) async {
         loggy.warning("error reconnecting", err);
         state = AsyncError(err, StackTrace.current);
@@ -289,6 +311,18 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
         default:
       }
     }
+  }
+
+  @visibleForTesting
+  bool get supportsConnectionReports => Platform.isAndroid;
+
+  MitConnectionJournal? get _journal => supportsConnectionReports ? ref.read(mitConnectionJournalProvider) : null;
+
+  void _beginReport(ProfileEntity profile, {bool automatic = false}) {
+    final protocol = profile.userOverride?.name;
+    _journal?.begin(protocol: protocol == MitVpnProtocol.amneziaWg.profileName ? MitReportProtocol.amneziaWG
+        : protocol == MitVpnProtocol.reality.profileName ? MitReportProtocol.vlessReality : MitReportProtocol.unknown,
+      automatic: automatic);
   }
 
   final _singleStart = SingleCall();
@@ -334,11 +368,14 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     final startedByUser = ref.read(Preferences.startedByUser.notifier);
     // The core reports Starting only once the config is built, about a second
     // later; the app is connecting from here on.
+    _beginReport(activeProfile, automatic: automatic);
     state = const AsyncData(Connecting());
     await _connectionRepo.connect(activeProfile, ref.read(Preferences.disableMemoryLimit)).mapLeft((
       ConnectionFailure err,
     ) async {
       if (epoch != _connectEpoch) return;
+      _journal?.recordError(err);
+      _journal?.finish(MitReportCode.failed);
       loggy.warning("error connecting", err);
       // Prefer Disconnected(failure) over AsyncError so the button shows failed + details,
       // and a late bare Disconnected from the status stream is less likely to erase it.
@@ -362,6 +399,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
     // The core often goes Started → Stopped with no Stopping in between, and the
     // button would hold green "connected" until then. Mirror connect: show
     // disconnecting from the tap.
+    if (!(_journal?.hasConnected ?? true)) _journal?.add(MitReportCode.cancelled);
     state = const AsyncData(Disconnecting());
     await _connectionRepo.disconnect().mapLeft((err) {
       loggy.warning("error disconnecting", err);
@@ -370,6 +408,7 @@ class ConnectionNotifier extends _$ConnectionNotifier with AppLogger {
           .showCustomAlertFromErr(oneTapVpnEnabled ? (type: 'Ошибка VPN', message: 'Не удалось выполнить действие. Проверьте разрешение Android VPN.') : err.present(ref.read(translationsProvider).requireValue));
       state = AsyncError(err, StackTrace.current);
     }).run();
+    _journal?.finish(MitReportCode.stopped);
   }
 }
 

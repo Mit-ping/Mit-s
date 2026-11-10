@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:hiddify/features/one_tap/report/mit_error_report.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/features/profile/data/profile_data_providers.dart';
@@ -68,9 +69,11 @@ class _Dialogs extends DialogNotifier {
 
 void main() {
   final profile = ProfileEntity.local(id: 'synthetic', active: true, name: 'VPN', lastUpdate: DateTime(2026));
-  Future<void> open(WidgetTester tester, {ProfileEntity? selected, ConnectionStatus status = const Disconnected(), VoidCallback? onToggle}) async {
+  Future<void> open(WidgetTester tester, {ProfileEntity? selected, ConnectionStatus status = const Disconnected(), VoidCallback? onToggle, bool reports = false}) async {
     await tester.pumpWidget(ProviderScope(
       overrides: [
+        mitErrorReportsEnabledProvider.overrideWithValue(reports),
+        mitErrorReportProvider.overrideWith((ref) async => const MitErrorReport(text: 'Тестовый журнал', fileName: 'report.txt', hasAttempt: true)),
         activeProfileProvider.overrideWith(() => _Active(selected)),
         connectionNotifierProvider.overrideWith(() => _Core(status, onToggle ?? () {})),
         dialogNotifierProvider.overrideWith(_Dialogs.new),
@@ -89,6 +92,18 @@ void main() {
     final ring = tester.widget<DecoratedBox>(find.byKey(const ValueKey('mit-power-ring')));
     return ((ring.decoration as BoxDecoration).border! as Border).top.color;
   }
+
+  testWidgets('Android menu opens the report directly below settings', (tester) async {
+    await open(tester, selected: profile, reports: true);
+    await tester.tap(find.byTooltip('Меню'));
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(find.text('Отчёт об ошибке')).dy, greaterThan(tester.getCenter(find.text('Настройки')).dy));
+    await tester.tap(find.byKey(const ValueKey('mit-error-report')));
+    await tester.pumpAndSettle();
+    expect(find.text('Тестовый журнал'), findsOneWidget);
+    expect(find.byKey(const ValueKey('mit-save-report')), findsOneWidget);
+    expect(find.byKey(const ValueKey('mit-share-report')), findsOneWidget);
+  });
 
   testWidgets('empty state imports explicitly and rejects subscription URLs before repository access', (tester) async {
     await open(tester);

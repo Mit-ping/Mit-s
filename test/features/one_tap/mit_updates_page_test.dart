@@ -7,7 +7,7 @@ import 'package:hiddify/features/one_tap/mit_updates.dart';
 import 'package:hiddify/features/one_tap/mit_updates_page.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
-final update = MitUpdateCandidate(version: '1.6.0-beta', build: 50006, notes: 'Изменения тестовой версии',
+final update = MitUpdateCandidate(version: '1.6.0-beta', build: 60000, notes: 'Изменения тестовой версии',
   apk: mitReleaseAsset('mit-beta-1.6.0', 'mits-vpn.apk'), sha256: 'a' * 64, size: 3);
 
 class _Service extends MitUpdateService {

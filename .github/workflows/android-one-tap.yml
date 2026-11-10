@@ -2,7 +2,7 @@ name: Android one-tap APK
 
 on:
   push:
-    branches: ['feat/android-one-tap-*']
+    branches: ['feat/android-one-tap-*', 'feat/android-error-report']
   pull_request:
     paths:
       - '.github/workflows/android-one-tap.yml'
@@ -104,7 +104,15 @@ jobs:
         run: python3 .github/scripts/summarize_flutter_tests.py --prepare "$RUNNER_TEMP/mit-prepare.log" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Prepare native libraries for Linux tests and Android
-        run: make linux-amd64-libs android-libs SHELL=/bin/bash '.SHELLFLAGS=-euo pipefail -c'
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 https://github.com/hiddify/hiddify-core/releases/download/draft/hiddify-lib-linux-amd64.tar.gz -o "$RUNNER_TEMP/linux-core.tar.gz"
+          echo "e7967d7ef876ddb985a32b0f93073035855da8c2cbf0e983f27e1ee22e580cdd  $RUNNER_TEMP/linux-core.tar.gz" | sha256sum --check -
+          curl --fail --location --retry 3 https://github.com/hiddify/hiddify-core/releases/download/draft/hiddify-lib-android.tar.gz -o "$RUNNER_TEMP/android-core.tar.gz"
+          echo "5d7ee5d91824202d8b3b62844291c1a62f17dde3c855d0e8a13081fd234405fb  $RUNNER_TEMP/android-core.tar.gz" | sha256sum --check -
+          mkdir -p hiddify-core/bin android/app/libs
+          tar -xzf "$RUNNER_TEMP/linux-core.tar.gz" -C hiddify-core/bin
+          tar -xzf "$RUNNER_TEMP/android-core.tar.gz" -C android/app/libs
 
       - name: Stage native core at the Flutter test FFI path
         run: |
@@ -209,6 +217,41 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mits-vpn-signed-${{ github.sha }}
+          path: signed/
+          if-no-files-found: error
+          retention-days: 30
+
+  sign-report-apk:
+    needs: test-and-apk
+    if: github.ref == 'refs/heads/feat/android-error-report'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: zulu
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'build-tools;36.0.0'
+      - uses: actions/download-artifact@v4
+        with:
+          name: mits-vpn-unsigned-${{ github.sha }}
+          path: unsigned
+      - name: Sign installable APK with the existing Android certificate
+        env:
+          ANDROID_SIGNING_KEY: ${{ secrets.ANDROID_SIGNING_KEY }}
+          ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+          ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+          ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+        run: python3 .github/scripts/sign_mit_beta.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MitsVPN-Android-error-report-50006
           path: signed/
           if-no-files-found: error
           retention-days: 30

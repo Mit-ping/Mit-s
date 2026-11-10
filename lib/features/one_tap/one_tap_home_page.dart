@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:hiddify/features/one_tap/report/mit_error_report.dart';
+import 'package:hiddify/features/one_tap/report/mit_error_report_page.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
@@ -26,6 +28,7 @@ class OneTapHomePage extends HookConsumerWidget {
     final status = ref.watch(connectionNotifierProvider);
     final recovery = ref.watch(mitRecoveryViewProvider);
     final names = ref.watch(mitProfileNamesProvider);
+    final errorReports = ref.watch(mitErrorReportsEnabledProvider);
     final busy = useState(false);
     final current = status.valueOrNull;
     final protocolLabel = active.valueOrNull == null ? 'VLESS / AWG'
@@ -108,6 +111,11 @@ class OneTapHomePage extends HookConsumerWidget {
                 onTap: canImport ? () => Navigator.pop(context, 1) : null),
             ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('Настройки'),
                 onTap: () => Navigator.pop(context, 2)),
+            if (errorReports)
+              ListTile(key: const ValueKey('mit-error-report'),
+                leading: const Icon(Icons.bug_report_outlined), title: const Text('Отчёт об ошибке'),
+                subtitle: const Text('Последнее подключение · Скачать / Поделиться'),
+                onTap: () => Navigator.pop(context, 3)),
           ]),
         ),
       );
@@ -116,6 +124,7 @@ class OneTapHomePage extends HookConsumerWidget {
         case 0: await importProfile();
         case 1: openProfiles();
         case 2: context.goNamed('settings');
+        case 3: await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const MitErrorReportPage()));
         default: break;
       }
     }

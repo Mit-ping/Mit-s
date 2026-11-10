@@ -27,3 +27,13 @@ Publishing additionally requires the four repository signing secrets documented 
 [BETA_SIGNING_AND_UPDATES.md](BETA_SIGNING_AND_UPDATES.md).
 
 Release notes for Telegram: [BETA_1_5_RU.md](releases/BETA_1_5_RU.md).
+
+## Локальный отчёт об ошибке (Android 50006)
+
+Проверки журнала и интерфейса: `mit_connection_report_test.dart`,
+`mit_error_report_page_test.dart` и меню в `one_tap_home_page_test.dart`.
+Покрыты последняя попытка, восстановление с диска, скрытие секретов,
+ограничение размера, гонка чтения, отмена сохранения, повтор после ошибки,
+защита от повторных нажатий и одинаковый файл для сохранения/отправки.
+Ручная проверка на телефоне: вызвать ошибку подключения, открыть меню →
+«Отчёт об ошибке», сохранить файл, затем выбрать Telegram через «Поделиться».

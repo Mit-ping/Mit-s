@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:hiddify/features/one_tap/report/mit_connection_journal.dart';
+import 'package:hiddify/features/one_tap/report/mit_connection_journal_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fpdart/fpdart.dart';
 import 'package:hiddify/core/haptic/haptic_service.dart';
@@ -45,6 +47,8 @@ class _Core extends ConnectionNotifier {
   DateTime now = DateTime(2026);
   @override
   bool get supportsAutomaticRecovery => true;
+  @override
+  bool get supportsConnectionReports => true;
   @override
   DateTime get recoveryTime => now;
 }
@@ -95,7 +99,10 @@ void main() {
     final connections = _Connections(), platform = _Platform();
     late ProviderContainer c;
     final profiles = _Profiles((p) => (c.read(activeProfileProvider.notifier) as _Active).publish(p));
+    final journal = MitConnectionJournal(listen: false);
+    addTearDown(journal.dispose);
     c = ProviderContainer(overrides: [
+      mitConnectionJournalProvider.overrideWithValue(journal),
       sharedPreferencesProvider.overrideWith((ref) async => prefs),
       connectionNotifierProvider.overrideWith(_Core.new),
       connectionRepositoryProvider.overrideWithValue(connections),
@@ -119,6 +126,24 @@ void main() {
     core.now = DateTime(2026).add(Duration(seconds: seconds));
     await core.pollRecoveryForTesting();
   }
+
+  test('real connection failures and automatic retries create separate last-attempt reports', () async {
+    final s = await setup();
+    await s.core.toggleConnection();
+    final journal = s.container.read(mitConnectionJournalProvider);
+    final first = (await journal.snapshot())!;
+    expect(first.complete, isTrue);
+    expect(first.automatic, isFalse);
+    expect(first.events.first.code, MitReportCode.start);
+    expect(first.events.last.code, MitReportCode.failed);
+    await tick(s.core, 0);
+    await tick(s.core, 3);
+    final second = (await journal.snapshot())!;
+    expect(second.id, isNot(first.id));
+    expect(second.automatic, isTrue);
+    expect(second.events.last.code, MitReportCode.failed);
+    expect(second.toJson().toString(), isNot(contains('synthetic failure')));
+  });
 
   test('real notifier retries and selects a backup without opening new error dialogs', () async {
     final s = await setup();

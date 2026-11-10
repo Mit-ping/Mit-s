@@ -21,13 +21,13 @@ Map<String, dynamic> release([String tag = 'mit-beta-1.6.0']) => {
     {'name': name, 'browser_download_url': mitReleaseAsset(tag, name).toString()}],
 };
 Map<String, dynamic> manifest() => {'schema': 1, 'application_id': 'app.hiddify.com',
-  'version': '1.6.0-beta', 'build_number': 50006, 'apk_size': 3, 'apk_sha256': 'a' * 64};
+  'version': '1.6.0-beta', 'build_number': 60000, 'apk_size': 3, 'apk_sha256': 'a' * 64};
 
 void main() {
   test('only a newer canonical release is offered', () {
-    expect(parseMitUpdate(release(), manifest())!.build, 50006);
-    expect(parseMitUpdate(release(), manifest(), currentBuild: 50006), isNull);
-    expect(parseMitUpdate(release(), manifest(), currentBuild: 50007), isNull);
+    expect(parseMitUpdate(release(), manifest())!.build, 60000);
+    expect(parseMitUpdate(release(), manifest(), currentBuild: 60000), isNull);
+    expect(parseMitUpdate(release(), manifest(), currentBuild: 60001), isNull);
   });
   test('metadata rejects wrong identity, tag, version, hash and bounds', () {
     for (final entry in {'schema': 2, 'application_id': 'other.app', 'version': '1.6.0',
