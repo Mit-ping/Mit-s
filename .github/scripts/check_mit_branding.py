@@ -10,6 +10,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 import traceback
 
+from verify_android_artwork import verify_artwork
+
 
 def report_error(kind, error, trace):
     line = traceback.extract_tb(trace)[-1].lineno
@@ -59,9 +61,10 @@ if len(sys.argv) > 1:
         names = archive.namelist()
         assert 'assets/flutter_assets/assets/images/mit_vpn_icon.png' in names
         assert 'assets/flutter_assets/assets/legal/NOTICE.txt' in names
-        assert any(name.endswith('/mit_icon_art.png') for name in names)
     sdk = os.environ.get('ANDROID_HOME') or os.environ['ANDROID_SDK_ROOT']
     aapt = Path(sdk) / 'build-tools/36.0.0/aapt'
+    aapt2 = Path(sdk) / 'build-tools/36.0.0/aapt2'
+    verify_artwork(apk, aapt2, icon)
     badging = subprocess.run([str(aapt), 'dump', 'badging', str(apk)], check=True, capture_output=True, text=True).stdout
     labels = re.findall(r"application-label:'([^']+)'", badging)
     assert labels == ['Mit’s VPN'], labels
@@ -71,5 +74,5 @@ if len(sys.argv) > 1:
     assert f"versionName='{build_name}'" in badging, 'Android alpha version name mismatch'
     assert f"versionCode='{build_number}'" in badging, 'Android alpha version code mismatch'
     assert "uses-permission: name='android.permission.ACCESS_NETWORK_STATE'" in badging, 'Recovery permission missing from APK'
-    assert any('mit_launcher' in line or 'mit_icon_art' in line for line in badging.splitlines() if line.startswith('application-icon-'))
+    assert any(line.startswith('application-icon-') for line in badging.splitlines()), 'Packaged launcher icon missing'
     print('Packaged APK application label, launcher identity, artwork and legal asset: PASS')
